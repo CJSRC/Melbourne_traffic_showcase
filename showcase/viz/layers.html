@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model Framework in 3D</title>
+<link rel="stylesheet" href="viz.css">
+<script type="importmap">{"imports": {"three": "../vendor/three/three.module.js"}}</script>
+</head>
+<body class="light">
+<div class="stage3d">
+  <div class="topbar">
+    <span class="title">Model framework in 3D</span>
+    <select class="sample" id="sample" aria-label="Junction-day"></select>
+    <span class="chip" id="params"></span>
+    <span class="spacer"></span>
+    <span class="chip warn" id="weights-chip" title="Values inside the network are not the trained model's" hidden><i></i>Placeholder weights</span>
+    <button class="btn" id="fly" type="button">Fly-through</button>
+    <button class="btn on" id="play" type="button">Pause</button>
+    <button class="btn" id="reset" type="button">Reset view</button>
+  </div>
+  <div class="viewport" id="view">
+    <div class="legend3d" id="legend"></div>
+    <div class="tooltip3d" id="tip" hidden></div>
+    <div class="hint" id="hint">hover a layer for its shape · click to fly to it · drag to rotate · scroll to zoom</div>
+    <div class="steps" id="steps" hidden>
+      <div class="count" id="count"></div>
+      <h3 id="step-title"></h3>
+      <p id="step-text"></p>
+      <div class="controls">
+        <button class="btn" id="prev" type="button" aria-label="Previous step">‹</button>
+        <button class="btn" id="next" type="button" aria-label="Next step">›</button>
+        <span class="track"><i id="track"></i></span>
+      </div>
+      <div class="dots" id="dots"></div>
+    </div>
+    <div class="chart-overlay" id="chart" hidden>
+      <canvas id="chart-canvas"></canvas>
+      <div class="chart-legend" id="chart-legend"></div>
+    </div>
+  </div>
+</div>
+<script type="module" src="layers.js"></script>
+</body>
+</html>

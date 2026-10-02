@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script>window.SHOWCASE_STATIC = true;</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIMES · Planning-Oriented Traffic Prediction</title>
+<meta name="description" content="AIMES project showcase: report, prediction model, scenario imagery tool and code.">
+<link rel="stylesheet" href="showcase/site.css">
+<link rel="stylesheet" href="data/code-style.css">
+</head>
+<body>
+
+<header class="bar">
+  <a class="brand" href="#overview" data-view="overview">
+    <span class="mark" aria-hidden="true"></span>
+    <span class="name">AIMES<span class="name-sub">Australian Integrated Multimodal EcoSystem</span></span>
+  </a>
+  <nav aria-label="Sections">
+    <a href="#overview" data-view="overview">Overview</a>
+    <a href="#report" data-view="report">Report</a>
+    <a href="#model" data-view="model">Model</a>
+    <a href="#imagery" data-view="imagery">Scenario imagery</a>
+    <a href="#code" data-view="code">Code</a>
+  </nav>
+</header>
+
+<main>
+
+<!-- ============================================================== overview -->
+<section class="view" id="overview" aria-label="Overview">
+  <div class="hero">
+    <div class="hero-inner">
+      <div class="hero-head">
+        <div>
+          <div class="eyebrow">Project showcase</div>
+          <h1 class="title"><span class="nowrap">Planning-stage</span> traffic prediction for Melbourne</h1>
+        </div>
+        <img class="crest" src="showcase/assets/unimelb_logo.png" alt="The University of Melbourne" width="250" height="250">
+      </div>
+      <div class="entries">
+        <a class="entry" href="#report" data-view="report">
+          <span class="thumb page"><img id="thumb-report" alt="" hidden></span>
+          <span class="entry-foot">
+            <span class="entry-name">Report<span class="entry-sub" id="sub-report">PDF</span></span>
+            <span class="entry-go" aria-hidden="true">→</span>
+          </span>
+        </a>
+        <a class="entry" href="#model" data-view="model">
+          <span class="thumb render"><img src="showcase/assets/model_card.jpg" alt=""></span>
+          <span class="entry-foot">
+            <span class="entry-name">Model<span class="entry-sub" id="sub-model">Interactive views</span></span>
+            <span class="entry-go" aria-hidden="true">→</span>
+          </span>
+        </a>
+        <a class="entry" href="#imagery" data-view="imagery">
+          <span class="thumb photo"><img id="thumb-imagery" alt="" hidden></span>
+          <span class="entry-foot">
+            <span class="entry-name">Scenario imagery<span class="entry-sub">Interactive tool</span></span>
+            <span class="entry-go" aria-hidden="true">→</span>
+          </span>
+        </a>
+        <a class="entry" href="#code" data-view="code">
+          <span class="thumb render"><img src="showcase/assets/code_card.png" alt=""></span>
+          <span class="entry-foot">
+            <span class="entry-name">Code<span class="entry-sub" id="sub-code">Code release</span></span>
+            <span class="entry-go" aria-hidden="true">→</span>
+          </span>
+        </a>
+      </div>
+    </div>
+    <div class="attribution">Roads © OpenStreetMap contributors</div>
+  </div>
+</section>
+
+<!-- ============================================================== report -->
+<section class="view" id="report" aria-label="Report">
+  <div class="split">
+    <ol class="list" id="toc" aria-label="Contents"><li class="list-head" aria-hidden="true">Contents</li></ol>
+    <div class="stage-wrap">
+      <div class="stage">
+        <div class="stage-bar">
+          <span class="stage-title" id="viewer-title"></span>
+          <span class="actions">
+            <a class="btn" id="viewer-open" href="#" target="_blank" rel="noopener" hidden>Open in new tab</a>
+            <a class="btn primary" id="viewer-download" href="#" download hidden>Download</a>
+          </span>
+        </div>
+        <iframe class="pdf" id="viewer-frame" title="Report" hidden></iframe>
+        <div class="empty" id="viewer-empty">Loading…</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================== model -->
+<section class="view" id="model" aria-label="Model">
+  <div class="split">
+    <ol class="list" id="figures" aria-label="Figures"><li class="list-head" aria-hidden="true">Figures</li></ol>
+    <div class="stage-wrap">
+      <div class="stage">
+        <div class="stage-bar">
+          <span class="stage-title" id="figure-title"></span>
+          <span class="actions"><a class="btn" id="figure-open" href="#" target="_blank" rel="noopener">Open full size</a></span>
+        </div>
+        <div class="figure-stage" id="figure-stage"><img id="figure-img" alt=""></div>
+        <div class="frames" id="frames" hidden></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================== scenario imagery -->
+<section class="view" id="imagery" aria-label="Scenario imagery">
+  <div class="stage-bar">
+    <span class="stage-title">Scenario imagery</span>
+    <span class="actions"><a class="btn" href="tool.html" target="_blank" rel="noopener">Open in its own window</a></span>
+  </div>
+  <iframe class="tool-frame" id="tool-frame" title="Scenario imagery tool"></iframe>
+</section>
+
+<!-- ============================================================== code -->
+<section class="view" id="code" aria-label="Code">
+  <div class="split">
+    <ol class="list code-list" id="code-files" aria-label="Code files"></ol>
+    <div class="stage-wrap">
+      <div class="stage">
+        <div class="stage-bar">
+          <span class="stage-title" id="code-title"></span>
+          <span class="actions">
+            <a class="btn" id="code-raw" href="#" target="_blank" rel="noopener" hidden>Raw</a>
+            <a class="btn primary" id="code-download" href="#" download hidden>Download</a>
+          </span>
+        </div>
+        <div class="code-body" id="code-body"><div class="empty">Loading…</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+<script src="showcase/site.js"></script>
+</body>
+</html>

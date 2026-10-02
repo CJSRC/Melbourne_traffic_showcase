@@ -1,0 +1,1084 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CAD to satellite — massing tool</title>
+<style>
+  :root { --bg:#f4f7fa; --panel:#ffffff; --line:#e1e7ef; --ink:#14213d; --dim:#5b6576;
+          --accent:#1c5cab; --ok:#16875a; --bad:#c43d3d; --canvas:#e9eef4; --field:#ffffff;
+          --field-line:#cfd8e4; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:13px/1.5 "Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,sans-serif; }
+  header { padding:8px 14px; border-bottom:1px solid var(--line); display:flex; background:var(--panel);
+           gap:16px; align-items:baseline; }
+  header h1 { font-size:14px; margin:0; font-weight:600; }
+  header span { color:var(--dim); font-size:12px; }
+  main { display:grid; grid-template-columns:1fr 1fr 1fr; gap:1px; background:var(--line);
+         height:calc(100vh - 39px); }
+  section { background:var(--panel); display:flex; flex-direction:column; min-width:0; }
+  .head { padding:8px 12px; border-bottom:1px solid var(--line); display:flex;
+          gap:8px; align-items:center; flex-wrap:wrap; }
+  .head b { font-size:12px; font-weight:600; }
+  .body { flex:1; position:relative; overflow:hidden; background:var(--canvas); }
+  canvas { position:absolute; top:0; left:0; }
+  select, input, button { background:var(--field); color:var(--ink); border:1px solid var(--field-line);
+                          border-radius:6px; padding:4px 8px; font:inherit; }
+  button { cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent);
+                   font-weight:600; }
+  button:disabled { opacity:.5; cursor:default; }
+  .slider { display:flex; align-items:center; gap:8px; padding:5px 12px; }
+  .slider label { width:74px; color:var(--dim); font-size:12px; }
+  .slider input[type=range] { flex:1; }
+  .slider output { width:52px; text-align:right; font-variant-numeric:tabular-nums; }
+  .note { padding:6px 12px; color:var(--dim); font-size:11.5px; border-top:1px solid var(--line); }
+  .stat { padding:6px 12px; font-size:12px; border-top:1px solid var(--line);
+          font-variant-numeric:tabular-nums; }
+  .stat.ok { color:var(--ok); } .stat.bad { color:var(--bad); }
+  .hint { position:absolute; left:10px; bottom:10px; background:rgba(255,255,255,.9); padding:5px 9px;
+          border:1px solid var(--line); border-radius:6px; color:var(--dim); font-size:11.5px;
+          pointer-events:none; }
+  /* overlays for the saved examples and for editing the prompt */
+  .sheet { position:fixed; inset:0; background:rgba(244,247,250,.97); display:none; z-index:20;
+           padding:26px 30px; overflow:auto; }
+  .sheet.on { display:block; }
+  .sheet h2 { font-size:15px; margin:0 0 12px; font-weight:600; }
+  .sheet .close { position:absolute; top:18px; right:24px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:6px;
+          padding:8px; }
+  .card img { width:100%; border-radius:4px; display:block; background:var(--canvas); }
+  .card .meta { color:var(--dim); font-size:11.5px; margin-top:6px; line-height:1.45;
+                font-variant-numeric:tabular-nums; }
+  .card .row { display:flex; gap:6px; margin-top:6px; }
+  textarea { width:100%; min-height:52vh; background:#fff; color:var(--ink);
+             border:1px solid var(--line); border-radius:6px; padding:12px;
+             font:12.5px/1.65 ui-monospace,Consolas,monospace; resize:vertical; }
+  /* inside the project showcase the site's own bar names the tool, so its header steps aside */
+  html.embedded header { display:none; }
+  html.embedded main { height:100vh; }
+</style>
+<script>if (window.self !== window.top) document.documentElement.classList.add('embedded');</script>
+</head>
+<body>
+<header>
+  <h1>CAD → satellite</h1>
+</header>
+
+<main>
+  <section>
+    <div class="head">
+      <b>1 · site</b>
+      <select id="library"><option value="">footprint library…</option></select>
+      <select id="year"></select>
+      <button id="reload">load imagery</button>
+      <button id="draw">draw own</button>
+      <button id="editShape" disabled>edit shape</button>
+      <button id="deleteShape" disabled title="delete the selected footprint">delete</button>
+    </div>
+    <div class="body" id="scenePane">
+      <canvas id="sceneCanvas"></canvas>
+      <div class="hint">drag to pan · wheel to zoom · drag footprint to move · wheel over
+      footprint to resize · drag a corner to reshape · right-click a corner to delete</div>
+    </div>
+    <div class="note" id="sceneNote">choose a footprint to begin</div>
+  </section>
+
+  <section>
+    <div class="head">
+      <b>2 · massing</b>
+      <label style="color:var(--dim)">height</label>
+      <input id="height" type="number" min="3" max="400" step="1" value="60" style="width:74px"> m
+      <span id="heightWhich" style="color:var(--dim);font-size:11.5px">placing</span>
+      <button id="nadir">flat</button>
+      <select id="style" title="how the block is drawn"></select>
+      <select id="mode" title="what this generation does to the site"></select>
+      <label id="existingWrap" style="color:var(--dim);display:none">from
+        <input id="existing" type="number" min="0" max="400" step="1" value="120"
+               style="width:62px"> m</label>
+      <label id="groundWrap" style="color:var(--dim);display:none">leave as
+        <select id="ground"></select></label>
+      <button id="addBlock" disabled title="keep this block and start another">+ add</button>
+    </div>
+    <div class="body" id="massPane"><canvas id="massCanvas"></canvas>
+      <div class="hint">drag the dot to move the satellite · or shove the block itself</div>
+    </div>
+    <div class="stat" id="blockList" style="display:none"></div>
+    <div class="stat" id="shiftStat">satellite directly overhead</div>
+    <div class="note">the disc is the sky, its centre straight overhead, its rim 35° off
+      vertical. The viewpoint belongs to the photograph, not to the building, so it is one
+      value for everything in frame — set it once against a tower whose height you know and
+      it holds for the rest. <b>flat</b> puts the satellite back overhead.</div>
+  </section>
+
+  <section>
+    <div class="head">
+      <b>3 · generated</b>
+      <button id="generate" class="primary" disabled>generate</button>
+      <button id="save" disabled>save png</button>
+      <button id="keep" disabled>save as example</button>
+      <button id="browse">examples</button>
+      <button id="editPrompt">prompt</button>
+    </div>
+    <div class="body" id="outPane"><canvas id="outCanvas"></canvas></div>
+    <div class="stat" id="outStat">nothing generated yet</div>
+  </section>
+</main>
+
+<div class="sheet" id="examplesSheet">
+  <button class="close" id="closeExamples">close</button>
+  <h2>saved examples</h2>
+  <div class="cards" id="exampleCards"></div>
+</div>
+
+<div class="sheet" id="promptSheet">
+  <button class="close" id="closePrompt">close</button>
+  <h2>prompt <span id="promptWords" style="color:var(--dim);font-weight:400"></span></h2>
+  <div class="note" style="border:0;padding:0 0 10px">
+    available placeholders: <b>{height}</b> metres, <b>{storeys}</b>, <b>{area}</b> square
+    metres, <b>{use}</b>. A literal brace must be doubled. Saving checks the wording formats
+    before it takes effect, so a broken edit cannot reach a generation.
+  </div>
+  <textarea id="promptText" spellcheck="false"></textarea>
+  <div class="row" style="display:flex;gap:8px;margin-top:10px;align-items:center">
+    <button id="savePrompt" class="primary">save</button>
+    <button id="resetPrompt">revert to built-in</button>
+    <span id="promptStat" style="color:var(--dim);font-size:12px"></span>
+  </div>
+</div>
+
+<script>
+const CANVAS = getComputedStyle(document.documentElement).getPropertyValue('--canvas').trim() || '#e9eef4';
+const state = {
+  // 1024, not because it looks better but because it comes back. The relay gives up at
+  // about sixty seconds and a 1400 px canvas puts roughly every other attempt over that
+  // line, each crossing costing a wasted minute before the retry. It is also what the batch
+  // runs have always used, so the tool and the pipeline now render the same thing.
+  scene: null, sceneUrl: null, scenePng: null, metresPerPx: 0, sizeM: 400, px: 1024,
+  lon: 144.9631, lat: -37.8136, pan: {x:0, y:0}, zoom: 1, polygon: null, scale: 1,
+  drawing: false, drawPoints: [], result: null, use: 'residential', editing: false,
+  liveHeight: 60,
+  selectedKey: null, massingPng: null, lastArea: null, lastOutside: null,
+  blocks: [],
+  styles: {}, style: 'colour',
+  modes: {}, mode: 'add',
+  // which block the height box drives: null is the one being positioned,
+  // otherwise an index into state.blocks
+  selected: null,
+  shading: 0.28,
+  // Where the sensor is, not where the roof landed. Storing the displacement instead meant
+  // the block was the same size whatever height you typed, because a displacement in pixels
+  // knows nothing about height. The viewpoint belongs to the photograph and the height
+  // belongs to the building; keeping them apart is what lets the block grow when you raise
+  // it. `azimuth` is the screen direction the roof is thrown, clockwise from east.
+  view: {lean: 0, azimuth: 315},
+};
+
+const el = id => document.getElementById(id);
+const scenePane = el('scenePane'), sceneCanvas = el('sceneCanvas');
+const massPane = el('massPane'), massCanvas = el('massCanvas');
+const outPane = el('outPane'), outCanvas = el('outCanvas');
+
+function fitCanvas(canvas, pane) {
+  canvas.width = pane.clientWidth; canvas.height = pane.clientHeight;
+}
+function fitAll() {
+  [[sceneCanvas, scenePane], [massCanvas, massPane], [outCanvas, outPane]]
+    .forEach(([c, p]) => fitCanvas(c, p));
+  drawScene(); drawMass(); drawOut();
+}
+window.addEventListener('resize', fitAll);
+
+async function loadLibrary() {
+  const data = await (await fetch('/api/footprints')).json();
+  const library = el('library');
+  data.items.forEach(item => {
+    const option = document.createElement('option');
+    option.value = JSON.stringify(item);
+    option.textContent = `${item.key} · ${item.height_m} m · ${item.area_m2} m²`;
+    library.appendChild(option);
+  });
+  const chooser = el('style');
+  (data.styles || []).forEach(s => {
+    state.styles[s.name] = s;
+    const option = document.createElement('option');
+    option.value = s.name; option.textContent = s.label;
+    chooser.appendChild(option);
+  });
+  chooser.value = state.style;
+  await loadModes();
+  const year = el('year');
+  data.years.forEach(y => {
+    const option = document.createElement('option');
+    option.value = y; option.textContent = y;
+    if (y === Math.max(...data.years)) option.selected = true;
+    year.appendChild(option);
+  });
+}
+
+async function loadScene() {
+  el('sceneNote').textContent = 'fetching imagery…';
+  const url = `/api/scene?lon=${state.lon}&lat=${state.lat}&size_m=${state.sizeM}`
+            + `&px=${state.px}&year=${el('year').value}`;
+  // kept as a data URL, because generating used to re-request this and the server would
+  // fetch and stitch every tile again before it could even start the model call
+  const blob = await (await fetch(url)).blob();
+  const dataUrl = await new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.readAsDataURL(blob);
+  });
+  const image = new Image();
+  await new Promise((resolve, reject) => {
+    image.onload = resolve; image.onerror = reject; image.src = dataUrl;
+  });
+  state.scene = image; state.sceneUrl = url; state.scenePng = dataUrl;
+  state.metresPerPx = state.sizeM / state.px;
+  state.zoom = Math.min(sceneCanvas.width / image.width,
+                        sceneCanvas.height / image.height) || 1;
+  state.pan = {x: (sceneCanvas.width - image.width * state.zoom) / 2,
+               y: (sceneCanvas.height - image.height * state.zoom) / 2};
+  el('sceneNote').textContent =
+    `${state.sizeM.toFixed(0)} m across at ${state.metresPerPx.toFixed(2)} m/px`
+    + ` — resolution is fixed, drag to pan`;
+  refreshBlocks();
+  drawScene(); drawMass();
+}
+
+// The polygon lives in scene-image pixels, so what the server rasterises is exactly what you
+// positioned. Zoom is a viewing transform on top of that and never reaches the server: the
+// scene is still generated at its own resolution, so magnifying to look closely cannot
+// change what the model is asked for.
+function toCanvas([x, y]) {
+  return [x * state.zoom + state.pan.x, y * state.zoom + state.pan.y];
+}
+function toScene([x, y]) {
+  return [(x - state.pan.x) / state.zoom, (y - state.pan.y) / state.zoom];
+}
+
+function polygonOnCanvas() {
+  if (!state.polygon) return null;
+  return state.polygon.map(toCanvas);
+}
+
+function drawPolygon(context, points, stroke, fill, width) {
+  context.beginPath();
+  points.forEach(([x, y], index) => index ? context.lineTo(x, y) : context.moveTo(x, y));
+  context.closePath();
+  if (fill) { context.fillStyle = fill; context.fill(); }
+  if (stroke && stroke !== 'rgba(0,0,0,0)') {
+    context.strokeStyle = stroke; context.lineWidth = width || 2.5; context.stroke();
+  }
+}
+
+function drawScene() {
+  const context = sceneCanvas.getContext('2d');
+  context.fillStyle = CANVAS;
+  context.fillRect(0, 0, sceneCanvas.width, sceneCanvas.height);
+  if (state.scene) context.drawImage(state.scene, state.pan.x, state.pan.y,
+                                     state.scene.width * state.zoom,
+                                     state.scene.height * state.zoom);
+  // Every footprint on the site, drawn alike and all of them editable. Keeping a block used
+  // to grey it out and freeze it, which made "+ add" feel like a commitment rather than a
+  // step; there is no reason a block placed a minute ago should be harder to fix than the
+  // one under the cursor.
+  polygons().forEach((entry, order) => {
+    const outline = entry.ref.map(toCanvas);
+    const chosen = entry.ref === (selectedBlock() ? selectedBlock().polygon : state.polygon);
+    drawPolygon(context, outline, '#5ee08a', null, chosen ? 2.6 : 1.4);
+    if (entry.label) {
+      const cx = outline.reduce((s, q) => s + q[0], 0) / outline.length;
+      const cy = outline.reduce((s, q) => s + q[1], 0) / outline.length;
+      context.fillStyle = '#5ee08a'; context.font = '11px sans-serif';
+      context.textAlign = 'center'; context.textBaseline = 'middle';
+      context.fillText(entry.label, cx, cy);
+    }
+    if (!state.editing) return;
+    // the side a new corner would land on
+    if (hoverEdge && hoverEdge.ref === entry.ref) {
+      const a = outline[hoverEdge.index];
+      const b = outline[(hoverEdge.index + 1) % outline.length];
+      context.beginPath();
+      context.moveTo(a[0], a[1]); context.lineTo(b[0], b[1]);
+      context.strokeStyle = '#ffd83b'; context.lineWidth = 3; context.stroke();
+    }
+    // a handle per corner. The one under the cursor grows, because on a dense parcel the
+    // corners sit a few pixels apart and there is otherwise no way to tell which one you
+    // are about to grab.
+    outline.forEach(([x, y], i) => {
+      const hot = (hoverVertex && hoverVertex.ref === entry.ref && hoverVertex.index === i)
+               || (dragVertex && dragVertex.ref === entry.ref && dragVertex.index === i);
+      context.beginPath();
+      context.arc(x, y, hot ? 6 : 3.5, 0, 2 * Math.PI);
+      context.fillStyle = hot ? '#ffd83b' : '#0d0e11';
+      context.fill();
+      context.strokeStyle = hot ? '#ffd83b' : '#5ee08a';
+      context.lineWidth = 1.4; context.stroke();
+    });
+  });
+  if (state.drawing && state.drawPoints.length) {
+    drawPolygon(context, state.drawPoints.map(toCanvas), '#ffd83b', null, 1.4);
+  }
+}
+
+/** Every footprint on the site: the one being positioned, then the ones already kept. */
+function polygons() {
+  const list = [];
+  if (state.polygon) list.push({ref: state.polygon, label: null});
+  state.blocks.forEach((block, i) => list.push({ref: block.polygon, label: String(i + 1)}));
+  return list;
+}
+
+/** Which corner is under the cursor, and on which footprint. Null when none is. */
+let hoverVertex = null, dragVertex = null, hoverEdge = null;
+function vertexAt(px, py) {
+  if (!state.editing) return null;
+  let best = null, bestDistance = 9;
+  polygons().forEach(entry => {
+    entry.ref.forEach((point, i) => {
+      const [x, y] = toCanvas(point);
+      const distance = Math.hypot(x - px, y - py);
+      if (distance < bestDistance) { bestDistance = distance; best = {ref: entry.ref, index: i}; }
+    });
+  });
+  return best;
+}
+
+// The block is a fixed prism -- the footprint extruded to the stated height -- and what the
+// mouse moves is where the satellite is. Under the near-parallel rays of an orbital view
+// that comes to the same arithmetic as sliding the roof, which is why the old control drew
+// the right picture, but it also has the bound the old control was missing: a sensor cannot
+// be at any angle at all. Collections used for basemaps are specified at modest off-nadir
+// angles and orthorectified aerial mosaics keep buildings within a comparable range;
+// past that the imagery would not survive being used as a base at all.
+const MAX_OFF_NADIR = 35;
+const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+
+function geometry() {
+  const height = parseFloat(el('height').value) || 1;
+  state.liveHeight = state.selected === null ? height : state.liveHeight;
+  const shiftM = height * Math.tan(state.view.lean * Math.PI / 180);
+  return {
+    height, shiftM, lean: state.view.lean, azimuth: state.view.azimuth,
+    // roofs lean away from the sensor, so the satellite sits opposite the displacement;
+    // screen angle counts clockwise from east, compass bearing clockwise from north
+    bearing: (state.view.azimuth + 270) % 360,
+  };
+}
+
+/** Where the roof lands, in scene pixels, for the current viewpoint and height. */
+function shiftPx() {
+  const shift = geometry().shiftM / state.metresPerPx;
+  const radians = state.view.azimuth * Math.PI / 180;
+  return {x: shift * Math.cos(radians), y: shift * Math.sin(radians)};
+}
+
+/** Read a viewpoint back out of a displacement the mouse produced, within the cap. */
+function setShift(x, y) {
+  const height = parseFloat(el('height').value) || 1;
+  const shiftM = Math.hypot(x, y) * state.metresPerPx;
+  state.view = {
+    lean: Math.min(Math.atan(shiftM / height) * 180 / Math.PI, MAX_OFF_NADIR),
+    azimuth: (Math.atan2(y, x) * 180 / Math.PI + 360) % 360,
+  };
+}
+
+/** Keep the block being positioned and free the tools to place another beside it. */
+function keepBlock() {
+  if (!state.polygon) return;
+  // a copy, not the same array. Moving and resizing now edit the points in place, so sharing
+  // the array would drag the block you just kept along with the one you are placing.
+  state.blocks.push({polygon: state.polygon.map(point => point.slice()),
+                     height_m: state.liveHeight, use: state.use, key: state.selectedKey});
+  // the footprint stays where it is so the next one can be dragged off it, which is quicker
+  // than choosing from the library again when the buildings on a site are alike
+  selectBlock(null);
+}
+
+function dropBlock(index) {
+  state.blocks.splice(index, 1);
+  selectBlock(null);
+}
+
+/** The kept blocks, listed so a wrong height can be found and removed. */
+function refreshBlocks() {
+  const list = el('blockList');
+  const total = allBlocks().length;
+  el('addBlock').disabled = !state.polygon
+    || !(state.modes[state.mode] || {many: true}).many;
+  el('deleteShape').disabled = state.selected === null && !state.polygon;
+  el('generate').disabled = !total;
+  if (!state.blocks.length) { list.style.display = 'none'; return; }
+  list.style.display = '';
+  list.innerHTML = state.blocks.map((b, i) =>
+    `<span style="margin-right:12px${i === state.selected ? ';color:var(--accent)' : ''}">`
+    + `${i + 1}. ${b.key || 'drawn'} ${b.height_m.toFixed(0)} m`
+    + ` <a href="#" data-drop="${i}" style="color:var(--bad);text-decoration:none">&times;</a>`
+    + `</span>`).join('')
+    + `<span style="color:var(--dim)">+ 1 being positioned — ${total} in the scene</span>`;
+  list.querySelectorAll('[data-drop]').forEach(a => a.addEventListener('click', event => {
+    event.preventDefault(); dropBlock(parseInt(a.dataset.drop, 10));
+  }));
+}
+
+/** Every block in the scene: the ones already kept, plus the one being positioned. */
+function allBlocks() {
+  const blocks = state.blocks.slice();
+  if (state.polygon) blocks.push({polygon: state.polygon, height_m: state.liveHeight,
+                                  use: state.use, live: true});
+  return blocks;
+}
+
+/** The block the height box is editing, or null when it is the one being positioned. */
+function selectedBlock() {
+  return state.selected === null ? null : state.blocks[state.selected] || null;
+}
+
+/** Point the height box at a block and show its height. */
+function selectBlock(index) {
+  state.selected = index;
+  const block = selectedBlock();
+  el('height').value = block ? block.height_m : state.liveHeight;
+  el('heightWhich').textContent = block ? `block ${index + 1}` : 'placing';
+  refreshBlocks(); drawScene(); drawMass();
+}
+
+function drawBlock(context, block, style, toward, paints) {
+  const points = block.polygon.map(toCanvas);
+  // the displacement is in scene pixels like the polygon, so it magnifies with the view
+  const shift = block.height_m * Math.tan(state.view.lean * Math.PI / 180)
+              / state.metresPerPx * state.zoom;
+  const radians = state.view.azimuth * Math.PI / 180;
+  const dx = shift * Math.cos(radians), dy = shift * Math.sin(radians);
+  const top = points.map(([x, y]) => [x + dx, y + dy]);
+  let area = 0;
+  for (let i = 0; i < points.length; i++) {
+    const j = (i + 1) % points.length;
+    area += points[i][0] * points[j][1] - points[j][0] * points[i][1];
+  }
+  const winding = area >= 0 ? 1 : -1;
+  const facing = [];
+  for (let i = 0; i < points.length; i++) {
+    const j = (i + 1) % points.length;
+    const ex = points[j][0] - points[i][0], ey = points[j][1] - points[i][1];
+    const len = Math.hypot(ex, ey) || 1;
+    const nx = ey / len * winding, ny = -ex / len * winding;
+    const dot = nx * toward[0] + ny * toward[1];
+    facing.push(dot > 0);
+    // a wall turned away is behind the solid; painting it drew over the walls in front
+    // on every notched footprint, which is what made the block look transparent
+    if (dot <= 0) continue;
+    if (paints === 'wire') continue;
+    const f = 1 + style.shading * dot;
+    const c = style.wall.map(v => Math.min(255, Math.max(0, Math.round(v * f))));
+    drawPolygon(context, [points[i], points[j], top[j], top[i]], 'rgba(0,0,0,0)',
+                `rgb(${c[0]},${c[1]},${c[2]})`);
+  }
+  // A demolition is outlined, not filled, so the building being removed stays visible
+  // underneath -- the model needs to see what it is taking away.
+  if (paints === 'wire') {
+    const wall = `rgb(${style.wall[0]},${style.wall[1]},${style.wall[2]})`;
+    const roof = `rgb(${style.roof[0]},${style.roof[1]},${style.roof[2]})`;
+    drawPolygon(context, points, wall, null, 2.2);
+    drawPolygon(context, top, roof, null, 2.2);
+    context.strokeStyle = wall; context.lineWidth = 2.2;
+    context.beginPath();
+    points.forEach(([x, y], i) => {
+      const prev = (i - 1 + points.length) % points.length;
+      if (!(facing[i] || facing[prev])) return;
+      context.moveTo(x, y); context.lineTo(top[i][0], top[i][1]);
+    });
+    context.stroke();
+    drawPolygon(context, points, '#5ee08a', null, 1.4);
+    return;
+  }
+  drawPolygon(context, top, 'rgba(0,0,0,0)',
+              `rgb(${style.roof[0]},${style.roof[1]},${style.roof[2]})`);
+  // only the corners that can be seen: one of the two facades meeting there must face
+  // the sensor, or the line lands inside the solid and crosses the roof
+  if (style.edges) {
+    const ec = style.wall.map(v => Math.round(v * 0.62));
+    context.strokeStyle = `rgb(${ec[0]},${ec[1]},${ec[2]})`;
+    context.lineWidth = 1;
+    context.beginPath();
+    points.forEach(([x, y], i) => {
+      const prev = (i - 1 + points.length) % points.length;
+      if (!(facing[i] || facing[prev])) return;
+      context.moveTo(x, y); context.lineTo(top[i][0], top[i][1]);
+    });
+    context.stroke();
+  }
+  // the same green ground outline as panel one, so the parcel the block stands on can be
+  // checked here too without switching back
+  drawPolygon(context, points, '#5ee08a', null, 1.4);
+}
+
+// the block is drawn over the same imagery, so the lean can be judged against real towers
+function drawMass() {
+  const context = massCanvas.getContext('2d');
+  context.fillStyle = CANVAS;
+  context.fillRect(0, 0, massCanvas.width, massCanvas.height);
+  if (state.scene) context.drawImage(state.scene, state.pan.x, state.pan.y,
+                                     state.scene.width * state.zoom,
+                                     state.scene.height * state.zoom);
+  const view = geometry();
+  // same colours and the same per-face shading the server paints, so what you judge on
+  // screen is what is sent
+  const style = state.styles[state.style] || {roof: [105,195,225], wall: [200,110,70],
+                                              shading: 0.28, edges: true};
+  const radians = state.view.azimuth * Math.PI / 180;
+  const toward = [-Math.cos(radians), -Math.sin(radians)];
+  // far to near, exactly as the server sorts them, so a nearer block stands in front of one
+  // behind it instead of whichever happened to be added last
+  const depth = b => {
+    const cx = b.polygon.reduce((s, p) => s + p[0], 0) / b.polygon.length;
+    const cy = b.polygon.reduce((s, p) => s + p[1], 0) / b.polygon.length;
+    return cx * toward[0] + cy * toward[1];
+  };
+  const paints = (state.modes[state.mode] || {paints: 'solid'}).paints;
+  allBlocks().slice().sort((a, b) => depth(a) - depth(b))
+    .forEach(block => {
+      if (paints === 'solid+wire') {
+        const was = parseFloat(el('existing').value) || 0;
+        if (was > 0) drawBlock(context, {...block, height_m: was}, style, toward, 'wire');
+        drawBlock(context, block, style, toward, 'solid');
+      } else {
+        drawBlock(context, block, style, toward, paints);
+      }
+    });
+  drawViewpoint(context, view);
+  el('shiftStat').textContent = view.shiftM < 0.05
+    ? 'satellite directly overhead — only the roof would show'
+    : `satellite ${view.lean.toFixed(1)}° off vertical, bearing `
+      + `${view.bearing.toFixed(0)}° ${COMPASS[Math.round(view.bearing / 45) % 8]}`
+      + ` · roof of a ${view.height.toFixed(0)} m building shifts `
+      + `${view.shiftM.toFixed(1)} m`
+      + (view.lean >= MAX_OFF_NADIR - 0.05 ? '  (at the limit)' : '');
+}
+
+/** Where the sensor is, as a dot in the sky hemisphere. Centre is straight overhead. */
+function discGeometry() {
+  const radius = Math.max(30, Math.min(62, massCanvas.width / 5));
+  return {cx: massCanvas.width - radius - 16, cy: massCanvas.height - radius - 16, radius};
+}
+
+function drawViewpoint(context, view) {
+  const {cx, cy, radius} = discGeometry();
+  context.save();
+  context.beginPath(); context.arc(cx, cy, radius, 0, 2 * Math.PI);
+  context.fillStyle = 'rgba(255,255,255,0.92)'; context.fill();
+  context.strokeStyle = '#c5d0de'; context.lineWidth = 1; context.stroke();
+  for (const ring of [10, 20, 30]) {
+    context.beginPath();
+    context.arc(cx, cy, radius * ring / MAX_OFF_NADIR, 0, 2 * Math.PI);
+    context.strokeStyle = 'rgba(20,33,61,0.16)'; context.stroke();
+  }
+  context.beginPath();
+  context.moveTo(cx - radius, cy); context.lineTo(cx + radius, cy);
+  context.moveTo(cx, cy - radius); context.lineTo(cx, cy + radius);
+  context.strokeStyle = 'rgba(20,33,61,0.12)'; context.stroke();
+  context.fillStyle = '#5b6576'; context.font = '10px sans-serif';
+  context.textAlign = 'center'; context.textBaseline = 'middle';
+  [['N', 0, -radius + 8], ['E', radius - 8, 0], ['S', 0, radius - 8], ['W', -radius + 8, 0]]
+    .forEach(([text, ox, oy]) => context.fillText(text, cx + ox, cy + oy));
+
+  // the sensor sits opposite the way the roof is thrown
+  const fraction = Math.min(view.lean / MAX_OFF_NADIR, 1);
+  const radians = view.azimuth * Math.PI / 180;
+  const dot = [cx - Math.cos(radians) * radius * fraction,
+               cy - Math.sin(radians) * radius * fraction];
+  context.beginPath();
+  context.moveTo(cx, cy); context.lineTo(dot[0], dot[1]);
+  context.strokeStyle = '#1c5cab'; context.lineWidth = 1.5; context.stroke();
+  context.beginPath(); context.arc(dot[0], dot[1], 6, 0, 2 * Math.PI);
+  context.fillStyle = '#1c5cab'; context.fill();
+  context.restore();
+}
+
+function drawOut() {
+  const context = outCanvas.getContext('2d');
+  context.fillStyle = CANVAS;
+  context.fillRect(0, 0, outCanvas.width, outCanvas.height);
+  if (state.result) context.drawImage(state.result, state.pan.x, state.pan.y,
+                                      state.result.width * state.zoom,
+                                      state.result.height * state.zoom);
+}
+
+// ---- interaction -------------------------------------------------------------
+let dragMode = null, dragFrom = null, dragPolygon = null;
+
+function insideOutline(outline, px, py) {
+  let inside = false;
+  for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
+    const [xi, yi] = outline[i], [xj, yj] = outline[j];
+    if (((yi > py) !== (yj > py))
+        && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+
+/** Which footprint the cursor is inside, or null. Moving and resizing work on whichever it
+ *  is, kept or not, and outside edit mode as well -- a block put down a minute ago should
+ *  not be harder to shove than the one still being placed. The one being positioned wins a
+ *  tie, since polygons() lists it first. */
+function polygonAt(px, py) {
+  return polygons().find(entry => insideOutline(entry.ref.map(toCanvas), px, py)) || null;
+}
+
+scenePane.addEventListener('mousedown', event => {
+  const rect = sceneCanvas.getBoundingClientRect();
+  const px = event.clientX - rect.left, py = event.clientY - rect.top;
+  if (state.drawing) {
+    state.drawPoints.push(toScene([px, py]));
+    drawScene(); return;
+  }
+  dragVertex = vertexAt(px, py);
+  dragPolygon = dragVertex ? null : polygonAt(px, py);
+  dragMode = dragVertex ? 'vertex' : dragPolygon ? 'polygon' : 'pan';
+  // clicking a block also points the height box at it, so three blocks of different heights
+  // can be set without deleting and re-adding the two you are happy with
+  const touched = dragVertex || dragPolygon;
+  if (touched) {
+    const index = state.blocks.findIndex(block => block.polygon === touched.ref);
+    selectBlock(index >= 0 ? index : null);
+  }
+  dragFrom = {x: px, y: py};
+});
+window.addEventListener('mouseup', () => { dragMode = null; dragVertex = null; dragPolygon = null; drawScene(); drawMass(); });
+window.addEventListener('mousemove', event => {
+  if (!dragMode) return;
+  const rect = sceneCanvas.getBoundingClientRect();
+  const px = event.clientX - rect.left, py = event.clientY - rect.top;
+  const dx = px - dragFrom.x, dy = py - dragFrom.y;
+  dragFrom = {x: px, y: py};
+  if (dragMode === 'pan') { state.pan.x += dx; state.pan.y += dy; }
+  // the polygon is stored in scene pixels, so a drag measured on the canvas has to be
+  // divided by the zoom or it would move further than the cursor did
+  else if (dragMode === 'vertex') dragVertex.ref[dragVertex.index] = toScene([px, py]);
+  else dragPolygon.ref.forEach(point => {
+    point[0] += dx / state.zoom; point[1] += dy / state.zoom;
+  });
+  drawScene(); drawMass(); drawOut();
+});
+// which corner the cursor is over, so the handle can grow before it is grabbed
+scenePane.addEventListener('mousemove', event => {
+  if (dragMode) return;
+  const rect = sceneCanvas.getBoundingClientRect();
+  const px = event.clientX - rect.left, py = event.clientY - rect.top;
+  const found = vertexAt(px, py);
+  const side = found ? null : edgeAt(px, py);
+  const same = (a, b) => (!a && !b) || (a && b && a.ref === b.ref && a.index === b.index);
+  if (same(found, hoverVertex) && same(side, hoverEdge)) return;
+  hoverVertex = found; hoverEdge = side;
+  scenePane.style.cursor = found ? 'pointer' : side ? 'copy' : '';
+  drawScene();
+});
+
+/** Nearest point on segment ab to p, and how far away it is. */
+function onSegment(p, a, b) {
+  const vx = b[0] - a[0], vy = b[1] - a[1];
+  const length = vx * vx + vy * vy;
+  const along = length ? Math.max(0, Math.min(1, ((p[0]-a[0])*vx + (p[1]-a[1])*vy) / length)) : 0;
+  const point = [a[0] + vx * along, a[1] + vy * along];
+  return {point, distance: Math.hypot(p[0] - point[0], p[1] - point[1])};
+}
+
+/** Which side the cursor is over, or -1. Corners win, so the two never fight. */
+function edgeAt(px, py) {
+  if (!state.editing || vertexAt(px, py)) return null;
+  let best = null, bestDistance = 7;
+  polygons().forEach(entry => {
+    const outline = entry.ref.map(toCanvas);
+    for (let i = 0; i < outline.length; i++) {
+      const hit = onSegment([px, py], outline[i], outline[(i + 1) % outline.length]);
+      if (hit.distance < bestDistance) {
+        bestDistance = hit.distance; best = {ref: entry.ref, index: i, point: hit.point};
+      }
+    }
+  });
+  return best;
+}
+
+// right-click a corner to drop it, or a side to put a new corner there. Three corners is
+// the floor -- below that there is no polygon left to rasterise, and the server would be
+// sent a degenerate footprint.
+scenePane.addEventListener('contextmenu', event => {
+  if (!state.editing) return;
+  const rect = sceneCanvas.getBoundingClientRect();
+  const px = event.clientX - rect.left, py = event.clientY - rect.top;
+  const corner = vertexAt(px, py);
+  if (corner) {
+    event.preventDefault();
+    if (corner.ref.length <= 3) {
+      el('sceneNote').textContent = 'a footprint needs at least three corners';
+      return;
+    }
+    corner.ref.splice(corner.index, 1);
+    hoverVertex = null;
+    drawScene(); drawMass();
+    return;
+  }
+  const side = edgeAt(px, py);
+  if (!side) return;
+  event.preventDefault();
+  // land it on the line rather than under the cursor, so the outline does not jump
+  side.ref.splice(side.index + 1, 0, toScene(side.point));
+  hoverVertex = null; hoverEdge = null;
+  drawScene(); drawMass();
+});
+
+// wheel over the footprint resizes it; wheel anywhere else magnifies the view
+scenePane.addEventListener('wheel', event => {
+  const rect = sceneCanvas.getBoundingClientRect();
+  const px = event.clientX - rect.left, py = event.clientY - rect.top;
+  event.preventDefault();
+  const factor = event.deltaY < 0 ? 1.08 : 1 / 1.08;
+
+  const over = polygonAt(px, py);
+  if (over) {
+    const cx = over.ref.reduce((s, p) => s + p[0], 0) / over.ref.length;
+    const cy = over.ref.reduce((s, p) => s + p[1], 0) / over.ref.length;
+    over.ref.forEach(point => {
+      point[0] = cx + (point[0] - cx) * factor;
+      point[1] = cy + (point[1] - cy) * factor;
+    });
+  } else {
+    // keep the ground under the cursor under the cursor
+    const before = toScene([px, py]);
+    state.zoom = Math.min(Math.max(state.zoom * factor, 0.25), 8);
+    const after = toCanvas(before);
+    state.pan.x += px - after[0];
+    state.pan.y += py - after[1];
+  }
+  drawScene(); drawMass(); drawOut();
+}, {passive: false});
+
+el('library').addEventListener('change', async event => {
+  if (!event.target.value) return;
+  const item = JSON.parse(event.target.value);
+  state.lon = item.longitude; state.lat = item.latitude;
+  state.use = item.use || 'residential';
+  state.selectedKey = item.key;
+  el('height').value = item.height_m;
+  state.liveHeight = item.height_m;
+  state.selected = null;
+  await loadScene();
+  // polygon_m is east/south metres from the building centroid, matching rasterize_footprint
+  const centre = state.px / 2;
+  state.polygon = item.polygon_m.map(([east, south]) =>
+    [centre + east / state.metresPerPx, centre + south / state.metresPerPx]);
+  // start somewhere visible so there is a block to grab; the drag is what settles it
+  state.view = {lean: 8, azimuth: 315};
+  setEditing(false);
+  refreshBlocks();
+  drawScene(); drawMass();
+});
+
+el('reload').addEventListener('click', loadScene);
+
+// Editing is a mode, not a permanent state of the panel: outside it the parcel is something
+// to look at, and a handle on every corner is in the way of looking at it.
+function setEditing(on) {
+  state.editing = on && !!state.polygon;
+  hoverVertex = hoverEdge = null;
+  scenePane.style.cursor = '';
+  el('editShape').textContent = state.editing ? 'save shape' : 'edit shape';
+  el('editShape').classList.toggle('primary', state.editing);
+  el('editShape').disabled = !state.polygon;
+  el('sceneNote').textContent = state.editing
+    ? 'drag a corner to move it · right-click a corner to delete · right-click a side to add one'
+    : `${state.sizeM.toFixed(0)} m across at ${state.metresPerPx.toFixed(2)} m/px`
+      + ' — resolution is fixed, drag to pan';
+  drawScene();
+}
+el('editShape').addEventListener('click', () => setEditing(!state.editing));
+
+/** Drop whichever footprint the height box is pointed at. */
+function deleteSelected() {
+  if (state.selected !== null) { dropBlock(state.selected); return; }
+  if (!state.polygon) return;
+  state.polygon = null;
+  state.selected = null;
+  setEditing(false);
+  refreshBlocks(); drawScene(); drawMass();
+}
+el('deleteShape').addEventListener('click', deleteSelected);
+window.addEventListener('keydown', event => {
+  // not while typing a height or a prompt
+  const tag = (event.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+  if (event.key === 'Delete' || event.key === 'Backspace') deleteSelected();
+});
+el('draw').addEventListener('click', () => {
+  if (!state.scene) { alert('load imagery first'); return; }
+  if (!state.drawing) {
+    state.drawing = true; state.drawPoints = [];
+    el('draw').textContent = 'finish shape';
+  } else {
+    state.drawing = false;
+    el('draw').textContent = 'draw own';
+    if (state.drawPoints.length >= 3) {
+      state.polygon = state.drawPoints.slice();
+      setEditing(false);
+      refreshBlocks();
+    }
+    state.drawPoints = [];
+  }
+  drawScene(); drawMass();
+});
+
+// a taller building throws its roof further from the same viewpoint, so the block simply
+// redraws bigger -- nothing about the viewpoint changes
+el('height').addEventListener('input', () => {
+  const value = parseFloat(el('height').value) || 1;
+  const block = selectedBlock();
+  if (block) { block.height_m = value; refreshBlocks(); } else { state.liveHeight = value; }
+  drawScene(); drawMass();
+});
+el('style').addEventListener('change', () => { state.style = el('style').value; drawMass(); });
+el('addBlock').addEventListener('click', keepBlock);
+el('mode').addEventListener('change', () => { state.mode = el('mode').value; applyMode(); });
+el('ground').addEventListener('change', drawMass);
+el('existing').addEventListener('input', drawMass);
+el('nadir').addEventListener('click', () => { state.view.lean = 0; drawMass(); });
+
+/** Put the sensor where the pointer is, within the hemisphere. */
+function setViewpoint(px, py) {
+  const {cx, cy, radius} = discGeometry();
+  const vx = px - cx, vy = py - cy;
+  const length = Math.hypot(vx, vy);
+  if (length < 1e-6) { state.view.lean = 0; return; }
+  state.view = {
+    lean: Math.min(length / radius, 1) * MAX_OFF_NADIR,
+    // the roof goes the other way from the sensor
+    azimuth: (Math.atan2(-vy, -vx) * 180 / Math.PI + 360) % 360,
+  };
+}
+
+// two ways at the same quantity: move the sensor in the disc, or shove the block until it
+// sits like its neighbours. Both are clamped, because the block is a fixed prism and the
+// only thing free to change is where it is being viewed from.
+let massDrag = null;
+massPane.addEventListener('mousedown', event => {
+  const rect = massCanvas.getBoundingClientRect();
+  const px = event.clientX - rect.left, py = event.clientY - rect.top;
+  const {cx, cy, radius} = discGeometry();
+  massDrag = Math.hypot(px - cx, py - cy) <= radius + 10
+    ? {mode: 'viewpoint'} : {mode: 'block', x: event.clientX, y: event.clientY};
+  if (massDrag.mode === 'viewpoint') { setViewpoint(px, py); drawMass(); }
+  event.preventDefault();
+});
+window.addEventListener('mouseup', () => { massDrag = null; });
+window.addEventListener('mousemove', event => {
+  if (!massDrag) return;
+  if (massDrag.mode === 'viewpoint') {
+    const rect = massCanvas.getBoundingClientRect();
+    setViewpoint(event.clientX - rect.left, event.clientY - rect.top);
+  } else {
+    const current = shiftPx();
+    setShift(current.x + event.clientX - massDrag.x,
+             current.y + event.clientY - massDrag.y);
+    massDrag.x = event.clientX; massDrag.y = event.clientY;
+  }
+  drawMass();
+});
+
+el('generate').addEventListener('click', async () => {
+  if (!state.polygon || !state.scene) return;
+  const button = el('generate');
+  button.disabled = true; button.textContent = 'generating…';
+  el('outStat').className = 'stat';
+  const started = Date.now();
+  const ticker = setInterval(() => {
+    el('outStat').textContent =
+      `calling the model — ${Math.round((Date.now() - started) / 1000)}s`
+      + ' (this takes about a minute; nothing is stuck)';
+  }, 1000);
+  try {
+    const response = await fetch('/api/generate', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        scene_png: state.scenePng,
+        blocks: allBlocks().map(b => ({polygon_px: b.polygon, height_m: b.height_m,
+                                       use: b.use})),
+        mode: state.mode,
+        ground: el('ground').value,
+        existing_m: parseFloat(el('existing').value) || 0,
+        metres_per_px: state.metresPerPx,
+        azimuth_deg: state.view.azimuth,
+        lean_deg: state.view.lean,
+        use: state.use,
+        style: state.style,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || response.statusText);
+    const image = new Image();
+    await new Promise(resolve => { image.onload = resolve; image.src = data.image; });
+    state.result = image; drawOut();
+    state.massingPng = data.massing;
+    state.lastArea = data.footprint_area_m2;
+    state.lastOutside = data.outside_roi_delta;
+    el('save').disabled = false;
+    el('keep').disabled = false;
+    el('outStat').className = 'stat ok';
+    el('outStat').textContent =
+      `footprint ${data.footprint_area_m2} m² · editable ${(data.roi_fraction * 100).toFixed(1)}%`
+      + ` of frame · outside that region changed by ${data.outside_roi_delta.toFixed(6)}`;
+  } catch (error) {
+    el('outStat').className = 'stat bad';
+    el('outStat').textContent = 'failed: ' + error.message;
+  } finally {
+    clearInterval(ticker);
+    button.disabled = false; button.textContent = 'generate';
+  }
+});
+
+// ---- saved examples and the prompt editor ---------------------------------------------
+// A generation worth keeping is stored on disk with the massing that produced it and the
+// wording that was in force at the time, because a picture on its own cannot say which of
+// those two it was that made it good.
+el('keep').addEventListener('click', async () => {
+  if (!state.result) return;
+  const note = prompt('a short note for this example (optional)') ?? '';
+  el('keep').disabled = true;
+  try {
+    const response = await fetch('/api/examples', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        image: state.result.src, massing: state.massingPng, note,
+        name: state.selectedKey || '', key: state.selectedKey || null,
+        height_m: parseFloat(el('height').value), lean_deg: state.view.lean,
+        azimuth_deg: state.view.azimuth, metres_per_px: state.metresPerPx,
+        size_m: state.sizeM, year: parseInt(el('year').value, 10),
+        footprint_area_m2: state.lastArea ?? null,
+        outside_roi_delta: state.lastOutside ?? null, style: state.style,
+      })});
+    const data = await response.json();
+    el('outStat').className = 'stat ok';
+    el('outStat').textContent = `kept as ${data.id} — ${data.count} example(s) saved`;
+  } finally { el('keep').disabled = false; }
+});
+
+async function showExamples() {
+  const cards = el('exampleCards');
+  cards.textContent = 'loading…';
+  el('examplesSheet').classList.add('on');
+  const {items} = await (await fetch('/api/examples')).json();
+  cards.textContent = '';
+  if (!items.length) { cards.textContent = 'nothing saved yet'; return; }
+  for (const item of items) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML =
+      `<img src="/api/examples/${item.id}/image.png" alt="">
+       <div class="meta">
+         <b>${item.key || item.id}</b>${item.note ? ' — ' + item.note : ''}<br>
+         ${item.height_m ?? '?'} m · lean ${(item.lean_deg ?? 0).toFixed(1)}° ·
+         ${(item.metres_per_px ?? 0).toFixed(2)} m/px · ${item.year ?? ''}<br>
+         saved ${item.saved_at}
+       </div>
+       <div class="row">
+         <button data-massing="${item.id}">massing</button>
+         <button data-prompt="${item.id}">prompt</button>
+         <button data-drop="${item.id}">delete</button>
+       </div>`;
+    card.querySelector('[data-massing]').onclick = e => {
+      const img = card.querySelector('img');
+      const showing = img.src.includes('/massing.png');
+      img.src = `/api/examples/${item.id}/${showing ? 'image' : 'massing'}.png`;
+      e.target.textContent = showing ? 'massing' : 'result';
+    };
+    card.querySelector('[data-prompt]').onclick = () => alert(item.prompt || '(not recorded)');
+    card.querySelector('[data-drop]').onclick = async () => {
+      if (!confirm('delete this example?')) return;
+      await fetch(`/api/examples/${item.id}`, {method: 'DELETE'});
+      showExamples();
+    };
+    cards.appendChild(card);
+  }
+}
+el('browse').addEventListener('click', showExamples);
+el('closeExamples').addEventListener('click',
+  () => el('examplesSheet').classList.remove('on'));
+
+/** The three jobs the tool can do. Demolition paints nothing, so panel two has to know. */
+async function loadModes() {
+  const data = await (await fetch('/api/prompt')).json();
+  const chooser = el('mode');
+  const ground = el('ground');
+  (data.grounds || []).forEach(g => {
+    const option = document.createElement('option');
+    option.value = g; option.textContent = g;
+    ground.appendChild(option);
+  });
+  (data.modes || []).forEach(m => {
+    state.modes[m.name] = m;
+    const option = document.createElement('option');
+    option.value = m.name; option.textContent = m.label;
+    chooser.appendChild(option);
+  });
+  chooser.value = state.mode;
+  applyMode();
+}
+
+function applyMode() {
+  const spec = state.modes[state.mode] || {needs_ground: false, needs_existing: false,
+                                           many: true};
+  el('groundWrap').style.display = spec.needs_ground ? '' : 'none';
+  el('existingWrap').style.display = spec.needs_existing ? '' : 'none';
+  // one building at a time when replacing or demolishing: the wording names a single
+  // building that is there now, and two of them would need two "was" heights
+  el('addBlock').disabled = !state.polygon || !spec.many;
+  drawScene(); drawMass();
+}
+
+async function loadPrompt() {
+  const data = await (await fetch(`/api/prompt?mode=${state.mode}`)).json();
+  el('promptText').value = data.prompt;
+  el('promptWords').textContent =
+    `— ${state.mode}, ${data.words} words${data.edited ? ', edited' : ', built-in'}`;
+  el('promptStat').textContent = '';
+}
+el('editPrompt').addEventListener('click', async () => {
+  await loadPrompt();
+  el('promptSheet').classList.add('on');
+});
+el('closePrompt').addEventListener('click', () => el('promptSheet').classList.remove('on'));
+el('savePrompt').addEventListener('click', async () => {
+  const response = await fetch('/api/prompt', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({prompt: el('promptText').value, mode: state.mode})});
+  const data = await response.json();
+  if (!response.ok) {
+    el('promptStat').style.color = 'var(--bad)';
+    el('promptStat').textContent = 'not saved — ' + data.error;
+    return;
+  }
+  el('promptStat').style.color = 'var(--ok)';
+  el('promptStat').textContent = `saved, ${data.words} words — used from the next generation`;
+  el('promptWords').textContent = `— ${data.words} words, edited`;
+});
+el('resetPrompt').addEventListener('click', async () => {
+  await fetch('/api/prompt', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                              body: JSON.stringify({reset: true, mode: state.mode})});
+  await loadPrompt();
+  el('promptStat').style.color = 'var(--dim)';
+  el('promptStat').textContent = 'reverted to the wording built into the server';
+});
+
+el('save').addEventListener('click', () => {
+  if (!state.result) return;
+  const link = document.createElement('a');
+  link.href = state.result.src;
+  link.download = 'generated.png';
+  link.click();
+});
+
+fitAll();
+loadLibrary();
+</script>
+</body>
+</html>
