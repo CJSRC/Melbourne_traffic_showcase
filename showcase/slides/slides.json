@@ -1,0 +1,88 @@
+{
+ "title": "Planning-oriented traffic state prediction: project presentation",
+ "updated": "05 Nov 2026",
+ "pdf": "presentation.pdf",
+ "pdf_mb": 4.0,
+ "slides": [
+  {
+   "n": 1,
+   "title": "Planning-Oriented Traffic State Prediction Based on Melbourne SCATS Network",
+   "file": "slide-01.jpg"
+  },
+  {
+   "n": 2,
+   "title": "Background and Study Area",
+   "file": "slide-02.jpg"
+  },
+  {
+   "n": 3,
+   "title": "Proposed Multimodal Framework",
+   "file": "slide-03.jpg"
+  },
+  {
+   "n": 4,
+   "title": "Route 1 and Route 2",
+   "file": "slide-04.jpg"
+  },
+  {
+   "n": 5,
+   "title": "Experimental Results",
+   "file": "slide-05.jpg"
+  },
+  {
+   "n": 6,
+   "title": "Land-Use Data: CLUE",
+   "file": "slide-06.jpg"
+  },
+  {
+   "n": 7,
+   "title": "Land-Use (Building) Features",
+   "file": "slide-07.jpg"
+  },
+  {
+   "n": 8,
+   "title": "Validation in Different Regions",
+   "file": "slide-08.jpg"
+  },
+  {
+   "n": 9,
+   "title": "Results: Land Use and a Wider Region",
+   "file": "slide-09.jpg"
+  },
+  {
+   "n": 10,
+   "title": "Land-Use Sensitivity Analysis",
+   "file": "slide-10.jpg"
+  },
+  {
+   "n": 11,
+   "title": "Land-Use Sensitivity: Time of Day",
+   "file": "slide-11.jpg"
+  },
+  {
+   "n": 12,
+   "title": "Land-Use Sensitivity: Road Class",
+   "file": "slide-12.jpg"
+  },
+  {
+   "n": 13,
+   "title": "Development Scenario Imagery: 3D Model + LLM",
+   "file": "slide-13.jpg"
+  },
+  {
+   "n": 14,
+   "title": "Generated Imagery: Test Cases",
+   "file": "slide-14.jpg"
+  },
+  {
+   "n": 15,
+   "title": "Generated Imagery in Traffic Prediction",
+   "file": "slide-15.jpg"
+  },
+  {
+   "n": 16,
+   "title": "Project Website",
+   "file": "slide-16.jpg"
+  }
+ ]
+}

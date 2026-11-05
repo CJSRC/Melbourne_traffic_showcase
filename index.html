@@ -6,6 +6,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AIMES · Planning-Oriented Traffic Prediction</title>
 <meta name="description" content="AIMES project showcase: report, prediction model, scenario imagery tool and code.">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="64x64" href="showcase/assets/aimes-mark-64.png">
 <link rel="stylesheet" href="showcase/site.css">
 <link rel="stylesheet" href="data/code-style.css">
 </head>
@@ -13,12 +15,13 @@
 
 <header class="bar">
   <a class="brand" href="#overview" data-view="overview">
-    <span class="mark" aria-hidden="true"></span>
+    <img class="mark" src="showcase/assets/aimes-mark-64.png" alt="" width="30" height="30">
     <span class="name">AIMES<span class="name-sub">Australian Integrated Multimodal EcoSystem</span></span>
   </a>
   <nav aria-label="Sections">
     <a href="#overview" data-view="overview">Overview</a>
     <a href="#report" data-view="report">Report</a>
+    <a href="#slides" data-view="slides">Presentation</a>
     <a href="#model" data-view="model">Model</a>
     <a href="#imagery" data-view="imagery">Scenario imagery</a>
     <a href="#code" data-view="code">Code</a>
@@ -43,6 +46,13 @@
           <span class="thumb page"><img id="thumb-report" alt="" hidden></span>
           <span class="entry-foot">
             <span class="entry-name">Report<span class="entry-sub" id="sub-report">PDF</span></span>
+            <span class="entry-go" aria-hidden="true">→</span>
+          </span>
+        </a>
+        <a class="entry" href="#slides" data-view="slides">
+          <span class="thumb slides"><img src="showcase/slides/slide-01.jpg" alt=""></span>
+          <span class="entry-foot">
+            <span class="entry-name">Presentation<span class="entry-sub" id="sub-slides">Slides</span></span>
             <span class="entry-go" aria-hidden="true">→</span>
           </span>
         </a>
@@ -88,6 +98,30 @@
         </div>
         <iframe class="pdf" id="viewer-frame" title="Report" hidden></iframe>
         <div class="empty" id="viewer-empty">Loading…</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================== presentation -->
+<section class="view" id="slides" aria-label="Presentation">
+  <div class="split">
+    <ol class="list" id="slide-list" aria-label="Slides"><li class="list-head" aria-hidden="true">Slides</li></ol>
+    <div class="stage-wrap">
+      <div class="stage">
+        <div class="stage-bar">
+          <span class="stage-title" id="slide-title"></span>
+          <span class="actions">
+            <button class="btn" id="slide-prev" type="button" aria-label="Previous slide">‹</button>
+            <button class="btn" id="slide-next" type="button" aria-label="Next slide">›</button>
+            <button class="btn" id="slide-present" type="button">Present</button>
+            <a class="btn primary" id="slide-pdf" href="#" download hidden>Download PDF</a>
+          </span>
+        </div>
+        <div class="slide-stage" id="slide-stage">
+          <img id="slide-img" alt="">
+          <span class="slide-count" id="slide-count"></span>
+        </div>
       </div>
     </div>
   </div>

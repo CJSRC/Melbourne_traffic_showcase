@@ -1,8 +1,8 @@
-// Project showcase: five views on one page, chosen by path so /report, /model, /imagery and /code
-// can be linked directly (by hash in the static copy). The report list comes from whatever PDFs the
-// report build has produced, so a newly finished chapter appears here without touching this file.
+// Project showcase: six views on one page, chosen by path so /report, /slides, /model, /imagery and
+// /code can be linked directly (by hash in the static copy). The report list comes from whatever PDFs
+// the report build has produced, so a newly finished chapter appears here without touching this file.
 
-const VIEWS = { '/': 'overview', '/report': 'report', '/imagery': 'imagery', '/model': 'model', '/code': 'code' };
+const VIEWS = { '/': 'overview', '/report': 'report', '/slides': 'slides', '/imagery': 'imagery', '/model': 'model', '/code': 'code' };
 const PATHS = Object.fromEntries(Object.entries(VIEWS).map(([path, view]) => [view, path]));
 
 // The page also runs as a static copy (GitHub Pages) written by export_static.py, which sets
@@ -33,18 +33,18 @@ const route = (view, query = '') => (STATIC ? `#${view}` : PATHS[view]) + (query
 const query = () => new URLSearchParams(STATIC ? location.hash.split('?')[1] || '' : location.search);
 const currentView = () => (STATIC ? location.hash.slice(1).split('?')[0] : VIEWS[location.pathname]) || 'overview';
 
-// the interactive 3D view of the settled network, then two tabs of the earlier web demo
-// (https://cjsrc.github.io/melbourne-traffic-demo/, copied unchanged to showcase/demo/; the part
-// after # names the demo's own tab), then the figures of Chapter 4
-const DEMO = at('/showcase/demo/');
+// the interactive 3D view of the settled network, two maps of the final results on the 81 study
+// intersections (make_final_maps.py; they replace the earlier web demo's 143-site maps), then the
+// figures of Chapter 4
 const VIEWS3D = {
   'Model framework in 3D': at('/showcase/viz/layers.html'),
-  'Network map by time': `${DEMO}index.html#map`,
-  'Study area & SAM segmentation': `${DEMO}index.html#sam`,
+  'Predictions by time of day': at('/showcase/viz/netmap.html'),
+  'Segmentation by intersection': at('/showcase/viz/segmap.html'),
 };
 const FIGURES = [
   ...Object.keys(VIEWS3D).map((title) => [null, title]),
-  ['fig4_graph.png', 'Junction network'],
+  ['fig4_segmentation.png', 'Segmentation examples'],
+  ['fig4_graph.png', 'Intersection adjacency graph'],
   ['fig4_network_example.png', 'Network features'],
   ['fig4_configurations.png', 'Configurations compared'],
 ];
@@ -70,6 +70,7 @@ function show(view, push) {
     toolLoaded = true;
   }
   if (view === 'report') loadReports();
+  if (view === 'slides') loadSlides();
   if (view === 'code') loadCode();
   // the first view is opened when the page is first shown, not on arrival: a 3D view laid out
   // while hidden has no size to draw at
@@ -136,7 +137,7 @@ async function loadReports() {
     button.type = 'button';
     button.disabled = !entry.item;
     const meta = entry.item
-      ? `${LANGUAGE[entry.item.language]} draft · ${entry.item.pages ?? '?'} pages · ${entry.item.updated}`
+      ? `${LANGUAGE[entry.item.language]} · ${entry.item.pages ?? '?'} pages · ${entry.item.updated}`
       : 'In preparation';
     button.innerHTML = `<span class="n">${entry.n}</span><span class="t"></span><span class="meta"></span>`;
     button.querySelector('.t').textContent = entry.title;
@@ -181,7 +182,7 @@ function listParts(full) {
   const wanted = Number(query().get('page'));
   const pick = [...toc.querySelectorAll('button')].find((b) => Number(b.dataset.page) === wanted);
   if (pick) pick.click();
-  else openPart(full, 1, `Full report · ${LANGUAGE[full.language]} draft · ${full.pages} pages · ${full.updated}`, null);
+  else openPart(full, 1, `Full report · ${full.pages} pages · ${full.updated}`, null);
 }
 
 function openPart(full, page, heading, button) {
@@ -247,13 +248,12 @@ function openFigure(i) {
     frame.dataset.title = title;
     frame.title = title;
     frame.src = url;
-    if (url.startsWith(DEMO)) frame.addEventListener('load', () => demoTab(frame, url.split('#')[1]));
     frames.appendChild(frame);
   }
   frames.querySelectorAll('iframe').forEach((f) => { f.hidden = f !== frame || !interactive; });
   frames.hidden = !interactive;
-  // a demo map hidden in the meantime has lost its size; Leaflet measures again on resize
-  if (interactive && url.startsWith(DEMO)) frame.contentWindow.dispatchEvent(new Event('resize'));
+  // a map hidden in the meantime has lost its size; Leaflet measures again on resize
+  if (interactive && frame.contentWindow) frame.contentWindow.dispatchEvent(new Event('resize'));
   $('figure-stage').hidden = interactive;
   if (!interactive) {
     $('figure-img').src = url;
@@ -261,38 +261,96 @@ function openFigure(i) {
   }
   $('figure-title').textContent = title;
   $('figure-open').href = url;
-  // opened on its own, the demo page would show all six of its tabs and its broken basemap
-  $('figure-open').hidden = interactive && url.startsWith(DEMO);
   document.querySelectorAll('#figures button').forEach((b, k) => b.setAttribute('aria-pressed', String(k === figureIndex)));
-}
-// The demo page is shown one tab at a time: its title bar and tab row are hidden by a style added
-// from here, so the copy stays identical to the published page. Also hidden: the study-area note,
-// which promises per-site examples below that this version of the page does not have. The maps
-// are fitted to the frame's height, so neither has to be scrolled to be seen whole.
-function demoTab(frame, tab) {
-  const page = frame.contentDocument;
-  const style = page.createElement('style');
-  style.textContent = 'header, .tabs, #v-sam .callout { display: none !important; }'
-    + '#map { height: clamp(400px, calc(100vh - 260px), 560px) !important; }'
-    + '#sammap { height: clamp(400px, calc(100vh - 230px), 620px) !important; }'
-    + '#map .leaflet-tile-pane { filter: grayscale(1) contrast(.9) brightness(1.06); }';
-  page.head.appendChild(style);
-  if (tab === 'map') {
-    // the published page's CARTO basemap now answers every tile with "API KEY REQUIRED";
-    // OpenStreetMap's own tiles need no key (greyed above, as the light CARTO map was)
-    const L = frame.contentWindow.L, map = frame.contentWindow.eval('map');
-    map.eachLayer((layer) => { if (layer instanceof L.TileLayer) map.removeLayer(layer); });
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-      { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
-  }
-  page.querySelector(`.tab[data-v="${tab}"]`).click();
 }
 $('figure-img').addEventListener('click', () => window.open($('figure-open').href, '_blank', 'noopener'));
 document.addEventListener('keydown', (event) => {
-  const typing = event.target instanceof Element && event.target.closest('input, textarea');
-  if (!$('model').classList.contains('on') || typing) return;
+  const typing = event.target instanceof Element && event.target.closest('input, textarea, select');
+  if (typing) return;
+  if ($('slides').classList.contains('on')) {
+    if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(event.key)) { openSlide(slideIndex + 1); event.preventDefault(); }
+    else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(event.key)) { openSlide(slideIndex - 1); event.preventDefault(); }
+    else if (event.key === 'Home') { openSlide(0); event.preventDefault(); }
+    else if (event.key === 'End' && deck) { openSlide(deck.slides.length - 1); event.preventDefault(); }
+    return;
+  }
+  if (!$('model').classList.contains('on')) return;
   if (event.key === 'ArrowDown' || event.key === 'ArrowRight') { openFigure(figureIndex + 1); event.preventDefault(); }
   if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') { openFigure(figureIndex - 1); event.preventDefault(); }
+});
+
+// ---------------------------------------------------------------- presentation
+
+// the client presentation as slide images (docs/presentation/curated/export_slides.ps1 and
+// slides_json.py write them to showcase/slides/): a list beside one slide, keys or the buttons to
+// step, Present for full screen, where a click on the right two thirds goes on and on the left goes back
+const SLIDES = at('/showcase/slides/');
+let deck = null;              // slides.json, loaded once
+let slideIndex = 0;
+
+async function fetchDeck() {
+  if (!deck) deck = await (await fetch(`${SLIDES}slides.json`)).json();
+  return deck;
+}
+
+async function loadSlides() {
+  const list = $('slide-list');
+  if (list.querySelector('button')) return;
+  let data;
+  try {
+    data = await fetchDeck();
+  } catch (error) {
+    $('slide-title').textContent = 'The slides could not be loaded.';
+    return;
+  }
+  data.slides.forEach((slide, i) => {
+    const li = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.innerHTML = '<span class="n"></span><span class="t"></span>';
+    button.querySelector('.n').textContent = String(slide.n).padStart(2, '0');
+    button.querySelector('.t').textContent = slide.title;
+    button.addEventListener('click', () => openSlide(i));
+    li.appendChild(button);
+    list.appendChild(li);
+  });
+  $('slide-pdf').href = `${SLIDES}${data.pdf}`;
+  $('slide-pdf').textContent = `Download PDF · ${data.pdf_mb} MB`;
+  $('slide-pdf').hidden = false;
+  const wanted = Number(query().get('slide'));
+  openSlide(wanted >= 1 && wanted <= data.slides.length ? wanted - 1 : 0);
+}
+
+function openSlide(i) {
+  if (!deck) return;
+  slideIndex = Math.max(0, Math.min(deck.slides.length - 1, i));
+  const slide = deck.slides[slideIndex];
+  $('slide-img').src = `${SLIDES}${slide.file}`;
+  $('slide-img').alt = slide.title;
+  $('slide-title').textContent = slide.title;
+  $('slide-count').textContent = `${slideIndex + 1} / ${deck.slides.length}`;
+  $('slide-prev').disabled = slideIndex === 0;
+  $('slide-next').disabled = slideIndex === deck.slides.length - 1;
+  const buttons = document.querySelectorAll('#slide-list button');
+  buttons.forEach((b, k) => b.setAttribute('aria-pressed', String(k === slideIndex)));
+  buttons[slideIndex]?.scrollIntoView({ block: 'nearest' });
+  // the next slide is fetched ahead, so stepping through does not wait for each picture
+  if (slideIndex + 1 < deck.slides.length) new Image().src = `${SLIDES}${deck.slides[slideIndex + 1].file}`;
+  if ($('slides').classList.contains('on')) {
+    history.replaceState({ view: 'slides' }, '', route('slides', slideIndex ? `slide=${slideIndex + 1}` : ''));
+  }
+}
+
+$('slide-prev').addEventListener('click', () => openSlide(slideIndex - 1));
+$('slide-next').addEventListener('click', () => openSlide(slideIndex + 1));
+$('slide-present').addEventListener('click', () => {
+  const stage = $('slide-stage');
+  if (stage.requestFullscreen) stage.requestFullscreen();
+});
+$('slide-stage').addEventListener('click', (event) => {
+  if (document.fullscreenElement !== $('slide-stage')) return;
+  const box = $('slide-stage').getBoundingClientRect();
+  openSlide(slideIndex + (event.clientX < box.left + box.width / 3 ? -1 : 1));
 });
 
 // ---------------------------------------------------------------- code
@@ -404,6 +462,10 @@ async function loadThumbs() {
   try {
     const data = await fetchCode();
     $('sub-code').textContent = `${data.files} files · ${data.lines.toLocaleString('en')} lines`;
+  } catch (error) { /* likewise */ }
+  try {
+    const data = await fetchDeck();
+    $('sub-slides').textContent = `${data.slides.length} slides · PDF`;
   } catch (error) { /* likewise */ }
 }
 

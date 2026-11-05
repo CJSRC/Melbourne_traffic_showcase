@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Segmentation by Intersection</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- SAM 3's class shares at the 81 study intersections, year by year (make_final_maps.py: data/segmap.json), in place
+     of the early web demo's whole-area raster. Statistics only, until the whole-area segmentation is added. -->
+<style>
+  :root { --bg:#f4f7fa; --panel:#fff; --panel-2:#f0f4f9; --line:#e1e7ef; --line-2:#cfd8e4; --ink:#14213d;
+          --ink-2:#46536a; --muted:#6b778a; --accent:#1c5cab; --accent-soft:#e8f0fb;
+          --sans:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; }
+  body { background:var(--bg); color:var(--ink); font:13px/1.45 var(--sans); display:flex; flex-direction:column; }
+  .controls { display:flex; flex-wrap:wrap; align-items:center; gap:10px 18px; padding:10px 14px;
+              background:var(--panel); border-bottom:1px solid var(--line); }
+  .group { display:flex; align-items:center; gap:8px; }
+  .label { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+  button { font:inherit; color:inherit; }
+  input[type=range] { width:200px; accent-color:var(--accent); }
+  .year { font-variant-numeric:tabular-nums; font-weight:650; font-size:18px; min-width:44px; }
+  .seg { display:inline-flex; border:1px solid var(--line-2); border-radius:9px; overflow:hidden; }
+  .seg button { border:0; background:var(--panel); padding:5px 10px; cursor:pointer; color:var(--ink-2); }
+  .seg button + button { border-left:1px solid var(--line-2); }
+  .seg button[aria-pressed="true"] { background:var(--accent-soft); color:var(--accent); font-weight:600; }
+  .play { border:1px solid var(--line-2); background:var(--panel); border-radius:8px; padding:4px 10px; cursor:pointer; }
+  .scale { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
+  .scale .bar { width:140px; height:9px; border-radius:5px; }
+  .body { flex:1; min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 330px; }
+  #map { min-height:0; background:#e9eef4; }
+  #map .leaflet-tile-pane { filter:grayscale(1) contrast(.9) brightness(1.06); }
+  .side { background:var(--panel); border-left:1px solid var(--line); padding:14px 16px; overflow:auto;
+          display:flex; flex-direction:column; gap:10px; }
+  .side h2 { margin:0; font-size:15px; }
+  .side .sub { color:var(--muted); font-size:12px; }
+  .legend { display:flex; flex-wrap:wrap; gap:4px 12px; font-size:12px; }
+  .legend span { display:flex; align-items:center; gap:6px; }
+  .legend i { width:11px; height:11px; border-radius:3px; display:inline-block; }
+  canvas#chart { width:100%; height:210px; }
+  table { border-collapse:collapse; font-size:12.5px; font-variant-numeric:tabular-nums; }
+  td { padding:2px 10px 2px 0; }
+  .note { color:var(--muted); font-size:11.5px; line-height:1.5; }
+  @media (max-width: 900px) { .body { grid-template-columns:1fr; grid-template-rows:minmax(320px,1fr) auto; }
+                              .side { border-left:0; border-top:1px solid var(--line); } }
+</style>
+</head>
+<body>
+<div class="controls">
+  <div class="group"><span class="label">Class</span><span class="seg" id="classes" role="group" aria-label="Class shown"></span></div>
+  <div class="group"><span class="label">Year</span>
+    <input type="range" id="yearRange" min="0" max="0" value="0" aria-label="Year">
+    <span class="year" id="year"></span>
+    <button class="play" id="play" type="button">Play</button></div>
+  <div class="scale"><span>0%</span><span class="bar" id="scaleBar"></span><span id="scaleTop"></span></div>
+</div>
+<div class="body">
+  <div id="map"></div>
+  <aside class="side">
+    <div><h2 id="site-name">Choose an intersection</h2><div class="sub" id="site-sub"></div></div>
+    <div class="legend" id="legend"></div>
+    <canvas id="chart" aria-label="Class shares year by year at the chosen intersection"></canvas>
+    <table id="table"></table>
+    <div class="note">Share of each intersection's 500 m × 500 m image that SAM 3 assigned to each class, in the 9 years the
+      model uses (report Section 4.2, Table 4.2). The square around the chosen intersection is outlined. Examples of the
+      segmentation are in report Figure 4.4.</div>
+  </aside>
+</div>
+<script>
+const COLOURS = { building_roof: '#8e24aa', road: '#fb8c00', vegetation: '#4caf50', parking_paved: '#e2b400' };
+const $ = (id) => document.getElementById(id);
+let data, map, markers = [], cls = 0, yi = 0, picked = null, square = null, timer = null, vmax = [];
+
+const pct = (v) => (v * 100).toFixed(1) + '%';
+function shade(key, t) {                    // white to the class colour
+  const c = COLOURS[key].match(/\w\w/g).map((h) => parseInt(h, 16));
+  t = Math.max(0, Math.min(1, t));
+  return `rgb(${c.map((v) => Math.round(255 + (v - 255) * (0.15 + 0.85 * t))).join(',')})`;
+}
+
+function draw() {
+  const key = data.classes[cls].key;
+  $('year').textContent = data.years[yi];
+  $('scaleBar').style.background = `linear-gradient(90deg, ${shade(key, 0)}, ${shade(key, 1)})`;
+  $('scaleTop').textContent = pct(vmax[cls]);
+  for (const [site, m] of markers) {
+    const row = site.shares[yi];
+    if (!row) { m.setStyle({ fillColor: '#fff', color: '#9aa4b4' }); continue; }
+    m.setStyle({ fillColor: shade(key, row[cls] / vmax[cls]), color: '#46536a' });
+  }
+  if (picked) pick(picked);
+}
+
+function chart() {
+  const canvas = $('chart'), dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const g = canvas.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
+  const left = 36, right = 6, top = 6, bottom = 22, n = data.years.length;
+  const bw = (w - left - right) / n;
+  const topv = Math.max(0.05, ...picked.shares.filter(Boolean).map((r) => r.reduce((a, b) => a + b, 0))) * 1.05;
+  const y = (v) => top + (h - top - bottom) * (1 - v / topv);
+  g.font = '11px Segoe UI, sans-serif'; g.fillStyle = '#6b778a'; g.strokeStyle = '#e1e7ef';
+  for (let k = 0; k <= 4; k++) { const v = topv * k / 4; g.beginPath(); g.moveTo(left, y(v)); g.lineTo(w - right, y(v)); g.stroke(); g.fillText(Math.round(v * 100) + '%', 2, y(v) + 4); }
+  picked.shares.forEach((row, k) => {
+    const x = left + k * bw + bw * 0.15;
+    if (row) {
+      let base = 0;
+      data.classes.forEach((c, j) => { g.fillStyle = COLOURS[c.key]; g.globalAlpha = j === cls ? 1 : 0.55; g.fillRect(x, y(base + row[j]), bw * 0.7, y(base) - y(base + row[j])); base += row[j]; });
+      g.globalAlpha = 1;
+    }
+    g.fillStyle = k === yi ? '#14213d' : '#6b778a';
+    g.fillText(String(data.years[k]).slice(2), x + bw * 0.12, h - 6);
+  });
+}
+
+function pick(site) {
+  picked = site;
+  $('site-name').textContent = `${site.id} · ${site.name}`;
+  const row = site.shares[yi];
+  $('site-sub').textContent = row ? `${data.years[yi]}: ${data.classes[cls].label.toLowerCase()} ${pct(row[cls])} of the image` : `no image in ${data.years[yi]}`;
+  $('table').innerHTML = row ? data.classes.map((c, j) => `<tr><td><span style="color:${COLOURS[c.key]}">■</span> ${c.label}</td><td>${pct(row[j])}</td></tr>`).join('')
+    + `<tr><td>Other</td><td>${pct(Math.max(0, 1 - row.reduce((a, b) => a + b, 0)))}</td></tr>` : '';
+  const d = 250 / 111320, e = 250 / (111320 * Math.cos(site.lat * Math.PI / 180));
+  const box = [[site.lat - d, site.lon - e], [site.lat + d, site.lon + e]];
+  if (square) square.setBounds(box); else square = L.rectangle(box, { color: '#1c5cab', weight: 2, fill: false, dashArray: '5 4' }).addTo(map);
+  chart();
+}
+
+async function main() {
+  data = await (await fetch('data/segmap.json', { cache: 'no-cache' })).json();
+  vmax = data.classes.map((c, j) => Math.max(...data.sites.flatMap((s) => s.shares.filter(Boolean).map((r) => r[j]))));
+  yi = data.years.length - 1;
+  $('yearRange').max = data.years.length - 1; $('yearRange').value = yi;
+  data.classes.forEach((c, j) => {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = c.label; b.setAttribute('aria-pressed', String(j === cls));
+    b.onclick = () => { cls = j; document.querySelectorAll('#classes button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); draw(); };
+    $('classes').appendChild(b);
+  });
+  $('legend').innerHTML = data.classes.map((c) => `<span><i style="background:${COLOURS[c.key]}"></i>${c.label}</span>`).join('');
+  map = L.map('map');
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
+  map.fitBounds(L.latLngBounds(data.sites.map((s) => [s.lat, s.lon])).pad(0.08));
+  for (const site of data.sites) {
+    const m = L.circleMarker([site.lat, site.lon], { radius: 8, weight: 1, fillOpacity: 0.95 }).addTo(map);
+    m.bindTooltip(() => { const r = site.shares[yi]; return `${site.id} · ${site.name}<br>${r ? data.classes[cls].label + ' ' + pct(r[cls]) : 'no image'}`; });
+    m.on('click', () => pick(site));
+    markers.push([site, m]);
+  }
+  $('yearRange').oninput = (e) => { yi = Number(e.target.value); draw(); };
+  $('play').onclick = () => {
+    if (timer) { clearInterval(timer); timer = null; $('play').textContent = 'Play'; return; }
+    $('play').textContent = 'Pause';
+    timer = setInterval(() => { yi = (yi + 1) % data.years.length; $('yearRange').value = yi; draw(); }, 900);
+  };
+  window.addEventListener('resize', () => { map.invalidateSize(); if (picked) chart(); });
+  draw();
+  pick(data.sites.find((s) => s.id === 2911) || data.sites[0]);
+}
+main();
+</script>
+</body>
+</html>

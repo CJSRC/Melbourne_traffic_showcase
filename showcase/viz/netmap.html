@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Predictions by Time of Day</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- The final model on the 81 study intersections in the test year 2024 (make_final_maps.py: data/netmap.json),
+     in place of the early web demo's 143-site map. Light, in the site's colours. -->
+<style>
+  :root { --bg:#f4f7fa; --panel:#fff; --panel-2:#f0f4f9; --line:#e1e7ef; --line-2:#cfd8e4; --ink:#14213d;
+          --ink-2:#46536a; --muted:#6b778a; --accent:#1c5cab; --accent-soft:#e8f0fb;
+          --truth:#1f2937; --r2:#1c5cab; --r1:#9b59b6; --none:#e08a1e;
+          --sans:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; }
+  body { background:var(--bg); color:var(--ink); font:13px/1.45 var(--sans); display:flex; flex-direction:column; }
+  .controls { display:flex; flex-wrap:wrap; align-items:center; gap:10px 18px; padding:10px 14px;
+              background:var(--panel); border-bottom:1px solid var(--line); }
+  .group { display:flex; align-items:center; gap:8px; }
+  .label { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+  select, button { font:inherit; color:inherit; }
+  select { background:var(--panel-2); border:1px solid var(--line-2); border-radius:8px; padding:4px 8px; }
+  input[type=range] { width:220px; accent-color:var(--accent); }
+  .clock { font-variant-numeric:tabular-nums; font-weight:650; font-size:18px; min-width:56px; }
+  .seg { display:inline-flex; border:1px solid var(--line-2); border-radius:9px; overflow:hidden; }
+  .seg button { border:0; background:var(--panel); padding:5px 10px; cursor:pointer; color:var(--ink-2); }
+  .seg button + button { border-left:1px solid var(--line-2); }
+  .seg button[aria-pressed="true"] { background:var(--accent-soft); color:var(--accent); font-weight:600; }
+  .play { border:1px solid var(--line-2); background:var(--panel); border-radius:8px; padding:4px 10px; cursor:pointer; }
+  .body { flex:1; min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 330px; }
+  #map { min-height:0; background:#e9eef4; }
+  #map .leaflet-tile-pane { filter:grayscale(1) contrast(.9) brightness(1.06); }
+  .side { background:var(--panel); border-left:1px solid var(--line); padding:14px 16px; overflow:auto;
+          display:flex; flex-direction:column; gap:10px; }
+  .side h2 { margin:0; font-size:15px; }
+  .side .sub { color:var(--muted); font-size:12px; }
+  .legend { display:grid; grid-template-columns:repeat(2, auto); gap:3px 14px; font-size:12px; justify-content:start; }
+  .legend span { display:flex; align-items:center; gap:6px; }
+  .legend i { width:16px; height:3px; border-radius:2px; display:inline-block; }
+  canvas#chart { width:100%; height:200px; }
+  .stats { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
+  .stat { border:1px solid var(--line); border-radius:10px; padding:8px 10px; }
+  .stat b { display:block; font-size:17px; font-variant-numeric:tabular-nums; }
+  .stat small { color:var(--muted); font-size:11px; }
+  .scale { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
+  .scale .bar { width:150px; height:9px; border-radius:5px;
+                background:linear-gradient(90deg,#2c7bb6,#abd9e9,#ffffbf,#fdae61,#d7191c); }
+  .note { color:var(--muted); font-size:11.5px; line-height:1.5; }
+  @media (max-width: 900px) { .body { grid-template-columns:1fr; grid-template-rows:minmax(320px,1fr) auto; }
+                              .side { border-left:0; border-top:1px solid var(--line); } }
+</style>
+</head>
+<body>
+<div class="controls">
+  <div class="group"><span class="label">Day</span><select id="day" aria-label="Day of the week"></select></div>
+  <div class="group"><span class="label">Time</span>
+    <input type="range" id="slot" min="0" max="95" value="32" aria-label="Time of day">
+    <span class="clock" id="clock">08:00</span>
+    <button class="play" id="play" type="button">Play</button></div>
+  <div class="group"><span class="label">Shown</span><span class="seg" id="series" role="group" aria-label="Series shown"></span></div>
+  <div class="scale"><span>low</span><span class="bar"></span><span>high</span></div>
+</div>
+<div class="body">
+  <div id="map"></div>
+  <aside class="side">
+    <div><h2 id="site-name">Choose an intersection</h2><div class="sub" id="site-sub"></div></div>
+    <div class="legend" id="legend"></div>
+    <canvas id="chart" aria-label="Volume through the day at the chosen intersection"></canvas>
+    <div class="stats" id="stats"></div>
+    <div class="note" id="note"></div>
+  </aside>
+</div>
+<script>
+const COLOURS = { truth: '#1f2937', r2attr: '#1c5cab', r1: '#9b59b6', none: '#e08a1e' };
+const STOPS = ['#2c7bb6', '#abd9e9', '#ffffbf', '#fdae61', '#d7191c'];
+const $ = (id) => document.getElementById(id);
+let data, map, markers = [], shown = 'r2attr', day = 0, slot = 32, picked = null, timer = null, vmax = 1;
+
+const hhmm = (s) => `${String(Math.floor(s / 4)).padStart(2, '0')}:${String((s % 4) * 15).padStart(2, '0')}`;
+function colour(t) {                       // t in 0..1 along the five stops
+  t = Math.max(0, Math.min(1, t)) * (STOPS.length - 1);
+  const i = Math.min(Math.floor(t), STOPS.length - 2), f = t - i;
+  const a = STOPS[i].match(/\w\w/g).map((h) => parseInt(h, 16)), b = STOPS[i + 1].match(/\w\w/g).map((h) => parseInt(h, 16));
+  return `rgb(${a.map((v, k) => Math.round(v + (b[k] - v) * f)).join(',')})`;
+}
+const seriesIndex = (key) => data.series.findIndex((s) => s.key === key);
+const value = (site, key, d = day, s = slot) => site.values[seriesIndex(key)][d * 96 + s];
+
+function draw() {
+  $('clock').textContent = hhmm(slot);
+  for (const [site, marker] of markers) {
+    const v = value(site, shown);
+    if (v === null || v === undefined) { marker.setStyle({ fillColor: '#ffffff', color: '#9aa4b4', fillOpacity: 0.6 }); marker.setRadius(4); continue; }
+    const t = Math.sqrt(v / vmax);
+    marker.setStyle({ fillColor: colour(t), color: '#ffffff', fillOpacity: 0.9 });
+    marker.setRadius(4 + 13 * t);
+  }
+  if (picked) chart();
+}
+
+function chart() {
+  const canvas = $('chart'), dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const g = canvas.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, w, h);
+  const left = 40, right = 8, top = 8, bottom = 22;
+  const all = data.series.flatMap((s, k) => picked.values[k].slice(day * 96, day * 96 + 96)).filter((v) => v !== null);
+  const top_v = Math.max(10, ...all) * 1.08;
+  const x = (s) => left + (w - left - right) * s / 95, y = (v) => top + (h - top - bottom) * (1 - v / top_v);
+  g.strokeStyle = '#e1e7ef'; g.fillStyle = '#6b778a'; g.font = '11px Segoe UI, sans-serif'; g.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) {
+    const v = top_v * k / 4; g.beginPath(); g.moveTo(left, y(v)); g.lineTo(w - right, y(v)); g.stroke();
+    g.fillText(String(Math.round(v)), 4, y(v) + 4);
+  }
+  for (const s of [0, 24, 48, 72, 95]) g.fillText(hhmm(s === 95 ? 96 : s).replace('24:00', '24'), x(s) - 12, h - 6);
+  for (let k = data.series.length - 1; k >= 0; k--) {
+    const key = data.series[k].key, values = picked.values[k].slice(day * 96, day * 96 + 96);
+    g.strokeStyle = COLOURS[key]; g.lineWidth = key === shown ? 2.4 : 1.4; g.beginPath();
+    let started = false;
+    values.forEach((v, s) => { if (v === null) { started = false; return; } if (started) g.lineTo(x(s), y(v)); else g.moveTo(x(s), y(v)); started = true; });
+    g.stroke();
+  }
+  g.strokeStyle = '#9aa4b4'; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(x(slot), top); g.lineTo(x(slot), h - bottom); g.stroke(); g.setLineDash([]);
+}
+
+function pick(site) {
+  picked = site;
+  $('site-name').textContent = `${site.id} · ${site.name}`;
+  const now = value(site, shown);
+  $('site-sub').textContent = now === null ? 'no measured volume in 2024' : `${data.days[day]} ${hhmm(slot)}: ${now} vehicles per 15 min (${data.series[seriesIndex(shown)].label})`;
+  const stat = (key, label) => `<div class="stat"><b>${site.geh[key] ?? '–'}</b><small>${label}</small></div>`;
+  $('stats').innerHTML = stat('r2attr', 'GEH median, Route 2 + land use') + stat('r1', 'GEH median, Route 1') + stat('none', 'GEH median, Time only');
+  chart();
+}
+
+async function main() {
+  data = await (await fetch('data/netmap.json', { cache: 'no-cache' })).json();
+  vmax = Math.max(...data.sites.flatMap((s) => s.values[0].filter((v) => v !== null)));
+  data.days.forEach((d, k) => { const o = document.createElement('option'); o.value = k; o.textContent = d; $('day').appendChild(o); });
+  for (const s of data.series) {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = s.label; b.dataset.key = s.key;
+    b.setAttribute('aria-pressed', String(s.key === shown));
+    b.onclick = () => { shown = s.key; document.querySelectorAll('#series button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); draw(); if (picked) pick(picked); };
+    $('series').appendChild(b);
+  }
+  $('legend').innerHTML = data.series.map((s) => `<span><i style="background:${COLOURS[s.key]}"></i>${s.label}</span>`).join('');
+  $('note').innerHTML = `Test year ${data.year}, each day of the week averaged over the year. Predictions are the mean of the 5 seeds of each configuration; `
+    + `the GEH medians are over every 15-minute interval of the year (hourly volumes), so they differ slightly from the report's Table 4.12, which averages each seed's median. `
+    + `Circle size and colour show the volume of the series chosen above. Intersection 4889 has no measured volume in 2024.`;
+  map = L.map('map', { zoomControl: true, attributionControl: true });
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
+  const bounds = L.latLngBounds(data.sites.map((s) => [s.lat, s.lon]));
+  map.fitBounds(bounds.pad(0.08));
+  for (const site of data.sites) {
+    const m = L.circleMarker([site.lat, site.lon], { radius: 6, weight: 1, color: '#fff', fillOpacity: 0.9 }).addTo(map);
+    m.bindTooltip(() => { const v = value(site, shown); return `${site.id} · ${site.name}<br>${v === null ? 'no data' : v + ' veh / 15 min'}`; });
+    m.on('click', () => pick(site));
+    markers.push([site, m]);
+  }
+  $('day').onchange = (e) => { day = Number(e.target.value); draw(); if (picked) pick(picked); };
+  $('slot').oninput = (e) => { slot = Number(e.target.value); draw(); if (picked) pick(picked); };
+  $('play').onclick = () => {
+    if (timer) { clearInterval(timer); timer = null; $('play').textContent = 'Play'; return; }
+    $('play').textContent = 'Pause';
+    timer = setInterval(() => { slot = (slot + 1) % 96; $('slot').value = slot; draw(); if (picked) pick(picked); }, 220);
+  };
+  window.addEventListener('resize', () => { map.invalidateSize(); if (picked) chart(); });
+  draw();
+  // the report's example intersection (Sections 3.3.3 and 4.4.2) to begin with
+  pick(data.sites.find((s) => s.id === 2911) || data.sites[0]);
+}
+main();
+</script>
+</body>
+</html>

@@ -4,6 +4,7 @@
 <script>window.SHOWCASE_STATIC = true;</script>
 <meta charset="utf-8">
 <title>CAD to satellite — massing tool</title>
+<link rel="icon" href="favicon.ico" sizes="any">
 <style>
   :root { --bg:#f4f7fa; --panel:#ffffff; --line:#e1e7ef; --ink:#14213d; --dim:#5b6576;
           --accent:#1c5cab; --ok:#16875a; --bad:#c43d3d; --canvas:#e9eef4; --field:#ffffff;
@@ -60,6 +61,23 @@
   /* inside the project showcase the site's own bar names the tool, so its header steps aside */
   html.embedded header { display:none; }
   html.embedded main { height:100vh; }
+  /* the hints sit on the picture until the pointer comes to work on it */
+  .hint { transition:opacity .2s; }
+  .body:hover .hint { opacity:0; }
+  details.note summary { cursor:pointer; color:var(--accent); }
+  details.note[open] summary { margin-bottom:3px; }
+  .credit { padding:3px 12px; color:var(--dim); font-size:10.5px; border-top:1px solid var(--line); }
+  .static-note { padding:8px 12px; font-size:12px; background:#fff8e6; border-top:1px solid #f1d9a6; color:#6b4e16; }
+  /* a laptop screen at 100 % holds three panels of about 430-520 px: smaller type and tighter rows
+     keep each panel's controls on one or two lines and leave the height to the pictures */
+  @media (max-width: 1600px) {
+    body { font-size:12px; }
+    .head { padding:6px 10px; gap:6px; }
+    .head b { font-size:11.5px; }
+    select, input, button { padding:3px 7px; border-radius:5px; }
+    .note, .stat { padding:4px 10px; font-size:11px; }
+    .hint { font-size:11px; padding:3px 7px; left:8px; bottom:8px; }
+  }
 </style>
 <script>if (window.self !== window.top) document.documentElement.classList.add('embedded');</script>
 </head>
@@ -85,6 +103,7 @@
       footprint to resize · drag a corner to reshape · right-click a corner to delete</div>
     </div>
     <div class="note" id="sceneNote">choose a footprint to begin</div>
+    <div class="credit">Imagery: Esri World Imagery Wayback (Esri, Maxar, Earthstar Geographics and the GIS User Community)</div>
   </section>
 
   <section>
@@ -108,10 +127,10 @@
     </div>
     <div class="stat" id="blockList" style="display:none"></div>
     <div class="stat" id="shiftStat">satellite directly overhead</div>
-    <div class="note">the disc is the sky, its centre straight overhead, its rim 35° off
+    <details class="note"><summary>the viewpoint disc</summary>the disc is the sky, its centre straight overhead, its rim 35° off
       vertical. The viewpoint belongs to the photograph, not to the building, so it is one
       value for everything in frame — set it once against a tower whose height you know and
-      it holds for the rest. <b>flat</b> puts the satellite back overhead.</div>
+      it holds for the rest. <b>flat</b> puts the satellite back overhead.</details>
   </section>
 
   <section>
@@ -124,6 +143,9 @@
       <button id="editPrompt">prompt</button>
     </div>
     <div class="body" id="outPane"><canvas id="outCanvas"></canvas></div>
+    <div class="static-note" id="staticNote" hidden>This public copy cannot generate: generating sends the
+      massing to OpenAI's gpt-image-2 through the project's own server, which holds the API key. It shows
+      instead a saved example for the chosen site; <b>examples</b> lists all of them.</div>
     <div class="stat" id="outStat">nothing generated yet</div>
   </section>
 </main>
@@ -194,8 +216,9 @@ function api(path) {
   return path;
 }
 if (STATIC) {
-  el('generate').title = 'generating needs the local server; the copy shows the saved examples';
-  el('outStat').textContent = 'read-only copy: generating runs on the local server only — '
+  el('generate').title = 'generating needs the project server, which holds the API key; the copy shows the saved examples';
+  el('staticNote').hidden = false;
+  el('outStat').textContent = 'read-only copy: generating runs on the project server only — '
     + 'see the saved examples';
   el('savePrompt').hidden = el('resetPrompt').hidden = true;
   el('promptText').readOnly = true;
@@ -208,8 +231,17 @@ function fitCanvas(canvas, pane) {
   canvas.width = pane.clientWidth; canvas.height = pane.clientHeight;
 }
 function fitAll() {
+  const before = [sceneCanvas.width, sceneCanvas.height];
   [[sceneCanvas, scenePane], [massCanvas, massPane], [outCanvas, outPane]]
     .forEach(([c, p]) => fitCanvas(c, p));
+  // a resized window or a changed browser zoom scales the view with the panel, about its centre,
+  // so the picture keeps filling it as it did (the zoom used to stay where it was set at load)
+  const f = Math.min(sceneCanvas.width / before[0], sceneCanvas.height / before[1]);
+  if (state.scene && isFinite(f) && f > 0 && Math.abs(f - 1) > 1e-3) {
+    state.pan = {x: (state.pan.x - before[0] / 2) * f + sceneCanvas.width / 2,
+                 y: (state.pan.y - before[1] / 2) * f + sceneCanvas.height / 2};
+    state.zoom *= f;
+  }
   drawScene(); drawMass(); drawOut();
 }
 window.addEventListener('resize', fitAll);
@@ -277,6 +309,32 @@ async function loadScene() {
     + ` — resolution is fixed, drag to pan`;
   refreshBlocks();
   drawScene(); drawMass();
+  if (STATIC) showSavedExample();
+}
+
+// The read-only copy generates nothing, so its third panel shows a saved example of the chosen
+// footprint: on the year shown if there is one, with the height nearest the library's.
+async function showSavedExample() {
+  const {items} = await (await fetch(api('/api/examples'))).json();
+  const mine = items.filter(i => i.key === state.selectedKey);
+  const year = Number(el('year').value);
+  const pool = mine.filter(i => i.year === year).length ? mine.filter(i => i.year === year) : mine;
+  if (!pool.length) {
+    state.result = null; drawOut();
+    el('outStat').textContent = 'no saved example for this footprint — see examples';
+    return;
+  }
+  const want = state.liveHeight;
+  const item = pool.reduce((a, b) => Math.abs(b.height_m - want) < Math.abs(a.height_m - want) ? b : a);
+  const image = new Image();
+  await new Promise((resolve, reject) => {
+    image.onload = resolve; image.onerror = reject;
+    image.src = api(`/api/examples/${item.id}/image.png`);
+  });
+  state.result = image; drawOut();
+  el('outStat').className = 'stat';
+  el('outStat').textContent = `saved example ${item.id}: ${item.height_m} m on the ${item.year} image`
+    + (item.year === year ? '' : ` (none saved on ${year})`);
 }
 
 // The polygon lives in scene-image pixels, so what the server rasterises is exactly what you
