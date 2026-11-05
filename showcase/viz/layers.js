@@ -193,7 +193,26 @@ function resetAll() {
 const HOLD = 800, DURATION = 4500, TAIL = 550;   // ms: the camera's flight, the whole step, its closing pause
 let fly = false;                      // false: free exploration under the wave of light
 let waving = true, playing = true;    // the wave in exploration, the playback in the fly-through
-let index = -1, started = 0, pausedAt = 0;
+let index = -1, clock = 0, started = 0;   // the fly-through's own clock (ms), run at the chosen speed
+// playback speed, chosen in the step panel (?speed= to open at one); the viewer's last choice is kept
+const SPEEDS = [1, 1.5, 2, 3];
+let speed = SPEEDS.includes(Number(params.get('speed'))) ? Number(params.get('speed')) : (() => {
+  try { const s = Number(localStorage.getItem('fly-speed')); return SPEEDS.includes(s) ? s : 1; } catch { return 1; }
+})();
+function setSpeed(s) {
+  speed = s;
+  try { localStorage.setItem('fly-speed', String(s)); } catch { /* storage refused: the choice lasts this visit */ }
+  document.querySelectorAll('#speed button').forEach((b, k) => b.classList.toggle('on', SPEEDS[k] === s));
+}
+SPEEDS.forEach((s) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = `${s}×`;
+  b.setAttribute('aria-label', `Play at ${s} times speed`);
+  b.addEventListener('click', () => setSpeed(s));
+  $('speed').appendChild(b);
+});
+setSpeed(speed);
 STEPS.forEach((_, i) => {
   const b = document.createElement('button');
   b.type = 'button';
@@ -216,9 +235,8 @@ function go(i) {
   step.run?.(0);
   step.enter?.();
   const box = step.box ? model.boxes[step.box] : model.boxOf(step.focus);
-  flyTo(stage.camera, stage.controls, frame(stage.camera, stage.controls, box, step.dir, step.margin), HOLD);
-  started = performance.now();
-  pausedAt = started;
+  flyTo(stage.camera, stage.controls, frame(stage.camera, stage.controls, box, step.dir, step.margin), HOLD / speed);
+  started = clock;
   $('count').textContent = `${index + 1} / ${STEPS.length}`;
   $('step-title').textContent = step.title;
   $('step-text').textContent = step.text;
@@ -254,8 +272,7 @@ $('prev').addEventListener('click', () => go(index - 1));
 $('next').addEventListener('click', () => go(index + 1));
 $('play').addEventListener('click', () => {
   if (fly) {
-    playing = !playing;
-    if (playing) started += performance.now() - pausedAt; else pausedAt = performance.now();
+    playing = !playing;                 // the clock simply stops while paused
   } else {
     waving = !waving;
   }
@@ -305,7 +322,7 @@ if (params.has('step')) {
   enterFly(clamp(Number(params.get('step')), 1, STEPS.length) - 1);
   if (params.has('at')) {
     $('play').click();
-    pausedAt = started + HOLD + clamp(Number(params.get('at')), 0, 1) * (DURATION - HOLD - TAIL);
+    clock = started + HOLD + clamp(Number(params.get('at')), 0, 1) * (DURATION - HOLD - TAIL);
   }
 }
 const clockStart = performance.now();
@@ -315,7 +332,8 @@ const span = [model.bounds.min.x, model.bounds.max.x];
   const dt = Math.max(0, (now - last) / 1000);
   last = now;
   if (fly) {
-    const elapsed = (playing ? now : pausedAt) - started;
+    if (playing) clock += Math.min(dt, 0.25) * 1000 * speed;   // a hidden tab does not skip steps on return
+    const elapsed = clock - started;
     STEPS[index].run?.(clamp((elapsed - HOLD) / (DURATION - HOLD - TAIL), 0, 1));
     $('track').style.width = `${clamp(elapsed / DURATION, 0, 1) * 100}%`;
     if (playing && elapsed > DURATION) go(index + 1);

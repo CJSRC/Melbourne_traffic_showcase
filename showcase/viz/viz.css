@@ -77,6 +77,13 @@ i.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; marg
 .dots { display: flex; gap: 5px; margin-top: 10px; flex-wrap: wrap; }
 .dots button { width: 9px; height: 9px; padding: 0; border-radius: 50%; border: 0; background: var(--line-2); cursor: pointer; }
 .dots button.on { background: var(--accent); }
+.speed { display: flex; gap: 3px; }
+.speed button {
+  font: inherit; font-size: 11px; padding: 3px 6px; border-radius: 6px; cursor: pointer;
+  background: var(--panel-2); border: 1px solid var(--line-2); color: var(--muted);
+}
+.speed button:hover { border-color: var(--accent); }
+.speed button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .tooltip3d {
   position: absolute; pointer-events: none; padding: 6px 10px; border-radius: 8px; font-size: 12px;
   background: var(--panel); border: 1px solid var(--line-2); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);

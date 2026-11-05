@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Model Framework in 3D</title>
-<link rel="stylesheet" href="viz.css">
+<link rel="stylesheet" href="viz.css?v=20261106">
 <script type="importmap">{"imports": {"three": "../vendor/three/three.module.js"}}</script>
 </head>
 <body class="light">
@@ -31,6 +31,7 @@
         <button class="btn" id="prev" type="button" aria-label="Previous step">‹</button>
         <button class="btn" id="next" type="button" aria-label="Next step">›</button>
         <span class="track"><i id="track"></i></span>
+        <span class="speed" id="speed" role="group" aria-label="Playback speed"></span>
       </div>
       <div class="dots" id="dots"></div>
     </div>
@@ -40,6 +41,6 @@
     </div>
   </div>
 </div>
-<script type="module" src="layers.js"></script>
+<script type="module" src="layers.js?v=20261106"></script>
 </body>
 </html>
