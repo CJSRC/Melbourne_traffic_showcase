@@ -194,14 +194,17 @@ const HOLD = 800, DURATION = 4500, TAIL = 550;   // ms: the camera's flight, the
 let fly = false;                      // false: free exploration under the wave of light
 let waving = true, playing = true;    // the wave in exploration, the playback in the fly-through
 let index = -1, clock = 0, started = 0;   // the fly-through's own clock (ms), run at the chosen speed
-// playback speed, chosen in the step panel (?speed= to open at one); the viewer's last choice is kept
-const SPEEDS = [1, 1.5, 2, 3];
+// playback speed, chosen in the step panel (?speed= to open at one); 2x unless the viewer chose another
+const SPEEDS = [1, 1.5, 2, 3], DEFAULT_SPEED = 2;
 let speed = SPEEDS.includes(Number(params.get('speed'))) ? Number(params.get('speed')) : (() => {
-  try { const s = Number(localStorage.getItem('fly-speed')); return SPEEDS.includes(s) ? s : 1; } catch { return 1; }
+  try { const s = Number(localStorage.getItem('flySpeed')); return SPEEDS.includes(s) ? s : DEFAULT_SPEED; }
+  catch { return DEFAULT_SPEED; }
 })();
-function setSpeed(s) {
+function setSpeed(s, remember = true) {
   speed = s;
-  try { localStorage.setItem('fly-speed', String(s)); } catch { /* storage refused: the choice lasts this visit */ }
+  if (remember) {
+    try { localStorage.setItem('flySpeed', String(s)); } catch { /* storage refused: the choice lasts this visit */ }
+  }
   document.querySelectorAll('#speed button').forEach((b, k) => b.classList.toggle('on', SPEEDS[k] === s));
 }
 SPEEDS.forEach((s) => {
@@ -212,7 +215,7 @@ SPEEDS.forEach((s) => {
   b.addEventListener('click', () => setSpeed(s));
   $('speed').appendChild(b);
 });
-setSpeed(speed);
+setSpeed(speed, false);
 STEPS.forEach((_, i) => {
   const b = document.createElement('button');
   b.type = 'button';
