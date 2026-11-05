@@ -190,7 +190,7 @@ function resetAll() {
 
 // ---------------------------------------------------------------- the two modes
 
-const HOLD = 1300, DURATION = 7200;
+const HOLD = 800, DURATION = 4500, TAIL = 550;   // ms: the camera's flight, the whole step, its closing pause
 let fly = false;                      // false: free exploration under the wave of light
 let waving = true, playing = true;    // the wave in exploration, the playback in the fly-through
 let index = -1, started = 0, pausedAt = 0;
@@ -305,7 +305,7 @@ if (params.has('step')) {
   enterFly(clamp(Number(params.get('step')), 1, STEPS.length) - 1);
   if (params.has('at')) {
     $('play').click();
-    pausedAt = started + HOLD + clamp(Number(params.get('at')), 0, 1) * (DURATION - HOLD - 900);
+    pausedAt = started + HOLD + clamp(Number(params.get('at')), 0, 1) * (DURATION - HOLD - TAIL);
   }
 }
 const clockStart = performance.now();
@@ -316,7 +316,7 @@ const span = [model.bounds.min.x, model.bounds.max.x];
   last = now;
   if (fly) {
     const elapsed = (playing ? now : pausedAt) - started;
-    STEPS[index].run?.(clamp((elapsed - HOLD) / (DURATION - HOLD - 900), 0, 1));
+    STEPS[index].run?.(clamp((elapsed - HOLD) / (DURATION - HOLD - TAIL), 0, 1));
     $('track').style.width = `${clamp(elapsed / DURATION, 0, 1) * 100}%`;
     if (playing && elapsed > DURATION) go(index + 1);
   } else {
