@@ -1,8 +1,8 @@
 {
  "title": "Planning-oriented traffic state prediction: project presentation",
- "updated": "05 Nov 2026",
+ "updated": "06 Nov 2026",
  "pdf": "presentation.pdf",
- "pdf_mb": 3.6,
+ "pdf_mb": 3.1,
  "slides": [
   {
    "n": 1,
@@ -66,23 +66,18 @@
   },
   {
    "n": 13,
-   "title": "Development Scenario Imagery: 3D Model + LLM",
+   "title": "Generated Imagery: Test Cases",
    "file": "slide-13.jpg"
   },
   {
    "n": 14,
-   "title": "Generated Imagery: Test Cases",
+   "title": "Generated Imagery in Traffic Prediction",
    "file": "slide-14.jpg"
   },
   {
    "n": 15,
-   "title": "Generated Imagery in Traffic Prediction",
-   "file": "slide-15.jpg"
-  },
-  {
-   "n": 16,
    "title": "Project Website",
-   "file": "slide-16.jpg"
+   "file": "slide-15.jpg"
   }
  ]
 }
