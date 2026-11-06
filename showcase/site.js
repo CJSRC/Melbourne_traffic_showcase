@@ -314,8 +314,8 @@ async function loadSlides() {
     li.appendChild(button);
     list.appendChild(li);
   });
-  $('slide-pdf').href = `${SLIDES}${data.pdf}`;
-  $('slide-pdf').textContent = `Download PDF · ${data.pdf_mb} MB`;
+  $('slide-pdf').href = `${SLIDES}${encodeURIComponent(data.pptx)}`;      // the PowerPoint file (6 November)
+  $('slide-pdf').textContent = `Download PowerPoint · ${data.pptx_mb} MB`;
   $('slide-pdf').hidden = false;
   const wanted = Number(query().get('slide'));
   openSlide(wanted >= 1 && wanted <= data.slides.length ? wanted - 1 : 0);
